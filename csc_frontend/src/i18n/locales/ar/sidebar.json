@@ -1,0 +1,16 @@
+{
+  "menu": {
+    "dashboard": "لوحة التحكم",
+    "cases": "القضايا",
+    "users": "المستخدمون",
+    "settings": "الإعدادات"
+  },
+  "brand": {
+    "titleLong": "Crime Scene Collector",
+    "subtitle": "MAI"
+  },
+  "footer": {
+    "logout": "تسجيل الخروج",
+    "welcomeBack": "أهلاً بعودتك"
+  }
+}

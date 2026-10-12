@@ -1,0 +1,15 @@
+{
+  "titles": {
+    "adminDashboard": "لوحة التحكم",
+    "adminCases": "إدارة القضايا",
+    "adminUsers": "إدارة المستخدمين",
+    "adminSettings": "الإعدادات",
+    "userDashboard": "لوحة التحكم",
+    "default": ""
+  },
+  "language": {
+    "current": "اللغة",
+    "english": "English",
+    "arabic": "العربية"
+  }
+}

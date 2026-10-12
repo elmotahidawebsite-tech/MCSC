@@ -1,0 +1,30 @@
+{
+  "title": "Settings",
+  "subtitle": "Configure system preferences and settings",
+  "sections": {
+    "general": "General Settings",
+    "security": "Security",
+    "notifications": "Notifications",
+    "appearance": "Appearance"
+  },
+  "fields": {
+    "language": "Default Language",
+    "theme": "Theme",
+    "timezone": "Timezone",
+    "dateFormat": "Date Format",
+    "pageSize": "Default Page Size",
+    "enableNotifications": "Enable Notifications",
+    "enableEmailAlerts": "Enable Email Alerts",
+    "twoFactorAuth": "Two-Factor Authentication",
+    "sessionTimeout": "Session Timeout (minutes)"
+  },
+  "options": {
+    "light": "Light",
+    "dark": "Dark",
+    "system": "System Default"
+  },
+  "messages": {
+    "saved": "Settings saved successfully",
+    "confirmReset": "Are you sure you want to reset all settings to default?"
+  }
+}

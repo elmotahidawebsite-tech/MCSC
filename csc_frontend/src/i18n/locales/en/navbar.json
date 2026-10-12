@@ -1,0 +1,15 @@
+{
+  "titles": {
+    "adminDashboard": "Dashboard",
+    "adminCases": "Cases Management",
+    "adminUsers": "Users Management",
+    "adminSettings": "Settings",
+    "userDashboard": "Dashboard",
+    "default": ""
+  },
+  "language": {
+    "current": "Language",
+    "english": "English",
+    "arabic": "العربية"
+  }
+}

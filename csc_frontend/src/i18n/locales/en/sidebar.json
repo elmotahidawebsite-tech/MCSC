@@ -1,0 +1,16 @@
+{
+  "menu": {
+    "dashboard": "Dashboard",
+    "cases": "Cases",
+    "users": "Users",
+    "settings": "Settings"
+  },
+  "brand": {
+    "titleLong": "Crime Scene Collector",
+    "subtitle": "MAI"
+  },
+  "footer": {
+    "logout": "Log Out",
+    "welcomeBack": "Welcome back"
+  }
+}

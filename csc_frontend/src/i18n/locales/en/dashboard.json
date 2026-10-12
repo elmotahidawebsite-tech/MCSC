@@ -1,0 +1,38 @@
+{
+  "stats": {
+    "totalStations": "Total Stations",
+    "totalCases": "Total Cases"
+  },
+  "admin": {
+    "title": "Active Stations",
+    "subtitle": "Real-time status of MAI crime scene collection points.",
+    "totalCases": "Total Cases",
+    "viewCases": "View Cases",
+    "noStationsFound": "No stations found."
+  },
+  "user": {
+    "welcomeTitle": "Welcome Back",
+    "welcomeSubtitle": "System secured. All clear for field operations.",
+    "cards": {
+      "criminal": {
+        "title": "Create New Criminal Case",
+        "arabicLabel": "Create New Criminal Case",
+        "badge": "Criminal"
+      },
+      "corpses": {
+        "title": "Create New Corpses Case",
+        "arabicLabel": "Create New Corpses Case",
+        "badge": "Corpses"
+      },
+      "civil": {
+        "title": "Create New Civil Case",
+        "arabicLabel": "Create New Civil Case",
+        "badge": "Civil"
+      }
+    }
+  },
+  "stationType": {
+    "admin": "ADMIN",
+    "station": "STATION"
+  }
+}
