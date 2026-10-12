@@ -276,10 +276,13 @@ import { api } from "../../../api/client";
             toast.error(t("cases:review.downloadFailed"));
           }
 
-          resetCase();
+          // Navigate immediately with replace to avoid context issues
+          navigate("/user/dashboard", { replace: true });
+          
+          // Reset case after a small delay to ensure navigation completes
           setTimeout(() => {
-            navigate("/user/dashboard");
-          }, 1200);
+            resetCase();
+          }, 300);
         } catch (e) {
           console.error(e);
           toast.error(t("cases:review.submitFailed"));
