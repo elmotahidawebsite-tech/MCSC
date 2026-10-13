@@ -177,7 +177,7 @@ function CorpseEditableCard({
                 onChange={(e) => patch("weight", e.target.value)}
                 className={inputBase()}
               >
-                <option value="">{t(`cases:selects.${corpse.weight}`)}</option>
+                {/* <option value=""></option> */}
                 <option value="slim">{t("cases:weightRanges.slim")}</option>
                 <option value="average">{t("cases:weightRanges.average")}</option>
                 <option value="overweight">{t("cases:weightRanges.overweight")}</option>
