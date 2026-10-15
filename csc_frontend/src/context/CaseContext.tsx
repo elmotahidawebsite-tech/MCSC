@@ -28,6 +28,9 @@ export type CaseType = "criminal" | "corpses" | "civil";
 
 export interface CorpsesCaseInfo {
   caseNumber: string;
+  caseYear: string;
+  governorate: string;
+  policeDepartment: string;
   dateOfDiscovery: string;
   inspectionDate: string;
   locationOfBodyPresence: string;
@@ -144,6 +147,9 @@ const emptyPerson: PersonData = {
 
 const emptyCorpsesCaseInfo: CorpsesCaseInfo = {
   caseNumber: "",
+  caseYear: "",
+  governorate: "",
+  policeDepartment: "",
   dateOfDiscovery: "",
   inspectionDate: "",
   locationOfBodyPresence: "",

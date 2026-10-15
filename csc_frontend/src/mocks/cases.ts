@@ -308,6 +308,9 @@ export function convertCaseRecordToCaseData(record: CaseRecord, seed: number): C
     },
     corpsesCaseInfo: {
       caseNumber: "",
+      caseYear: "",
+      governorate: "",
+      policeDepartment: "",
       dateOfDiscovery: "",
       inspectionDate: "",
       locationOfBodyPresence: "",

@@ -26,6 +26,7 @@ import type { CivilCaseInfo as CivilCaseInfoType } from "@/context/CaseContext";
 import { civilCaseInfoSchema } from "@/schemas/caseSchema";
 import { submitCivilCase } from "@/api/cases";
 import { api } from "@/api/client";
+import { GOVERNORATES_BILINGUAL } from "@/constants/governorates";
 
 type MediaKind = "image" | "video" | "audio" | "document";
 
@@ -71,36 +72,6 @@ const labelCls = "mb-1.5 sm:mb-2 block text-[11px] sm:text-[12px] md:text-[13px]
 const iconWrap = "pointer-events-none absolute left-2.5 sm:left-3 top-1/2 -translate-y-1/2 text-[#64748b]";
 const textareaIconWrap = "pointer-events-none absolute left-2.5 sm:left-3 top-3 text-[#64748b]";
 const selectChevronWrap = "pointer-events-none absolute right-2.5 sm:right-3 top-1/2 -translate-y-1/2 text-[#64748b]";
-
-const GOVERNORATES: Record<string, string[]> = {
-  "Cairo (القاهرة)": ["Nasr City (مدينة نصر)","Heliopolis (هيليوبوليس)","Maadi (المعادي)","New Cairo (القاهرة الجديدة)","Ain Shams (عين شمس)","Al Marg (المرج)","Shubra (شبرا)","Misr El Qadima (مصر القديمة)","Sayeda Zeinab (سيدة زينب)","Abdeen (عبدين)","Qasr El Nile (قصر النيل)","Downtown (الوسط)"],
-  "Giza (الجيزة)": ["Dokki (الدقى)","Agouza (عجوزة)","Imbaba (إمبابة)","Mohandessin (المهندسين)","Haram (الهرم)","6th of October (6 أكتوبر)","Sheikh Zayed (الشيخ زايد)","El Warraq (الوراق)","Kerdasa (كردسة)","Al Saf (الصف)"],
-  "Alexandria (الإسكندرية)": ["Raml (الرمل)","Sidi Gaber (سيدى جابر)","Smouha (سموحة)","Bolkly (بولكلى)","Moharam Bek (موحم بيك)","Karmouz (كرموز)","El Amreya (العمرية)","Borg El Arab (برج العرب)"],
-  "Dakahlia (الدقهلية)": ["Mansoura (المنصورة)","Talkha (طلخا)","Mit Ghamr (ميت غمر)","Sherbin (شربين)","Aga (أغة)","Belqas (بلقاس)","Dekernes (دكرنس)"],
-  "Sharqia (الشرقية)": ["Zagazig (زقازيق)","10th of Ramadan (العاشر من رمضان)","Belbeis (بلبيس)","Minya El Qamh (مينا القمح)","Abu Hammad (أبو حماد)","Faqous (فاقوس)","Kafr Saqr (كفر صقر)"],
-  "Qalyubia (القليوبية)": ["Banha (بنها)","Shubra El Kheima (شبرا الخيمة)","Qalyub (قليوب)","Khanka (خانكة)","Kafr Shukr (كفر شكر)","Toukh (طوخ)"],
-  "Gharbia (الغربية)": ["Tanta (طنطا)","El Mahalla El Kubra (المحلة الكبرى)","Kafr El Zayat (كفر الزيات)","Zefta (زفتى)","Santa (سانتا)"],
-  "Monufia (المنوفية)": ["Shibin El Kom (شبين الكوم)","Menouf (منوف)","Ashmoun (أشمون)","Sadat (سدات)","Berket El Sab (بركة السبع)"],
-  "Beheira (البحيرة)": ["Damanhur (دمنهور)","Kafr El Dawwar (كفر الدوار)","Rashid (رشيد)","Edku (إدكو)","Abu Hummus (أبو حمود)","Hosh Issa (حوش عيسى)"],
-  "KafrElSheikh (كفر الشيخ)": ["Kafr El Sheikh (كفر الشيخ)","Desouk (ديسوك)","Metoubes (متوبس)","Baltim (بالتيم)","Sidi Salem (سيدى سالم)"],
-  "Damietta (الدمياط)": ["Damietta (الدمياط)","New Damietta (الدمياط الجديدة)","Faraskour (فراسكور)","Kafr Saad (كفر سعد)","El Zarqa (الزرقاء)"],
-  "PortSaid (بورسعيد)": ["Port Said (بورسعيد)","Port Fouad (بور فؤاد)"],
-  "Ismailia (الاسماعيلية)": ["Ismailia (الاسماعيلية)","Fayed (فايد)","El Qantara (القنطرة)","Abu Suwir (أبو سوير)"],
-  "Suez (السويس)": ["Suez (السويس)","Arbaeen (العاشر)","Ataka (أتاكا)","Faisal (فيصل)"],
-  "NorthSinai (شمال سيناء)": ["Arish (عريش)","Sheikh Zuweid (سيدى زويد)","Rafah (رفح)","Bir El Abd (بير العبد)"],
-  "SouthSinai (جنوب سيناء)": ["Sharm El Sheikh (شرم الشيخ)","Dahab (دهب)","Nuweiba (نويبة)","Taba (طابا)","Saint Catherine (سانت كاترين)"],
-  "RedSea ( البحر الأحمر )": ["Hurghada (هورغدا)","Safaga (صفاجا)","El Quseir (القصير)","Marsa Alam (مرسى علم)","Ras Gharib (رأس غريب)"],
-  "Fayoum (الفيوم)": ["Fayoum (الفيوم)","Sinnuris (سينوريس)","Tamiya (تامييا)","Itsa (إتسا)","Abshaway (أبو شويخ)"],
-  "BeniSuef (بني سويف)": ["Beni Suef (بني سويف)","Al Wasta (الوسطى)","Nasser (ناصر)","Biba (بيبة)","Samasta (سمسطا)"],
-  "Minya (المنيا)": ["Minya (المنيا)","Mallawi (مالوي)","Samalut (سمالوت)","Maghagha (مغاغة)","Beni Mazar (بني مازار)","Abu Qurqas (أبو قرقاس)"],
-  "Asyut (أسيوط)": ["Asyut (أسيوط)","Dairut (ديروت)","Manfalut (منفلوط)","Qusiya (قصية)","Abnoub (أبو نوب)","Abu Tig (أبو تيج)"],
-  "Sohag (سوهاج)": ["Sohag (سوهاج)","Akhmim (أخمين)","Girga (قرة)","Tahta (طهطا)","Juhayna (جحنا)","Al Maragha (المراغة)"],
-  "Qena (قنا)": ["Qena (قنا)","Nag Hammadi (نag هامادي)","Qus (قص)","Naqada (نقادة)","Dishna (ديشنا)"],
-  "Luxor (الأقصر)": ["Luxor (الأقصر)","Esna (إسنا)","Armant (أرمنت)","Al Bayadiya (البيادية)"],
-  "Aswan (أسوان)": ["Aswan (أسوان)","Kom Ombo (كوم أومبو)","Edfu (إدفو)","Daraw (دارو)"],
-  "Matrouh (مطروح)": ["Marsa Matrouh (مرسى مطروح)","El Alamein (العلامة)","Dabaa (ضبعة)","Sallum (سالم)","Siwa (سيوة)"],
-  "NewValley (الوادي الجديد)": ["Kharga (خارجة)","Dakhla (دخلة)","Farafra (فرا فرا)","Baris (باريس)"],
-};
 
 const FINGERPRINT_TYPES = ["Digital", "Fingerprint (Document)"];
 const FINGERPRINT_HOLDERS = ["Appellant", "Deceased", "Other"];
@@ -279,7 +250,7 @@ export default function CivilCaseInfo() {
                   <div className={iconWrap}><MapPin size={16} className="sm:hidden" /><MapPin size={18} className="hidden sm:block" /></div>
                   <select value={data.governorate} onChange={(e) => updateCivilCaseInfo({ governorate: e.target.value })} className={selectCls(hasErr("governorate"))}>
                     <option value="">{t("cases:selects.selectGovernorate")}</option>
-                    {Object.keys(GOVERNORATES).map((g) => (<option key={g} value={g}>{g}</option>))}
+                    {Object.keys(GOVERNORATES_BILINGUAL).map((g) => (<option key={g} value={g}>{g}</option>))}
                   </select>
                   <div className={selectChevronWrap}><ChevronDown size={16} className="sm:hidden" /><ChevronDown size={18} className="hidden sm:block" /></div>
                 </div>

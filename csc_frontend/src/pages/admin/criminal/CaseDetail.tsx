@@ -159,6 +159,9 @@ export default function AdminCaseDetail() {
             },
             corpsesCaseInfo: {
               caseNumber: c.report_number || "",
+              caseYear: c.case_year ? String(c.case_year) : "",
+              governorate: c.governorate || "",
+              policeDepartment: c.police_department || "",
               dateOfDiscovery: c.date_of_discovery ? String(c.date_of_discovery).slice(0, 10) : "",
               inspectionDate: c.inspection_date ? c.inspection_date.slice(0, 10) : "",
               locationOfBodyPresence: c.location_of_body_presence || "",

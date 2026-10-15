@@ -19,6 +19,7 @@ import { useCase } from "@/context/CaseContext";
 import type { PersonData } from "@/context/CaseContext";
 import { caseInfoSchema } from "@/schemas/caseSchema";
 import type { ZodFormattedError } from "zod";
+import { GOVERNORATES_BILINGUAL } from "@/constants/governorates";
 
 const EMPTY_REPORTER: PersonData = {
     fullName: "",
@@ -348,238 +349,6 @@ type CaseErrors = ZodFormattedError<CaseInfoShape>;
 type CaseKey = keyof CaseInfoShape;
 
 export default function CaseInfo() {
-    const governorates: Record<string, string[]> = {
-        "Cairo": [
-            "Nasr City",
-            "Heliopolis",
-            "Maadi",
-            "New Cairo",
-            "Ain Shams",
-            "Al Marg",
-            "Shubra",
-            "Misr El Qadima",
-            "Sayeda Zeinab",
-            "Abdeen",
-            "Qasr El Nile",
-            "Downtown",
-        ],
-
-        "Giza": [
-            "Dokki",
-            "Agouza",
-            "Imbaba",
-            "Mohandessin",
-            "Haram",
-            "6th of October",
-            "Sheikh Zayed",
-            "El Warraq",
-            "Kerdasa",
-            "Al Saf",
-        ],
-
-        "Alexandria": [
-            "Raml",
-            "Sidi Gaber",
-            "Smouha",
-            "Bolkly",
-            "Moharam Bek",
-            "Karmouz",
-            "El Amreya",
-            "Borg El Arab",
-        ],
-
-        "Dakahlia": [
-            "Mansoura",
-            "Talkha",
-            "Mit Ghamr",
-            "Sherbin",
-            "Aga",
-            "Belqas",
-            "Dekernes",
-        ],
-
-        "Sharqia": [
-            "Zagazig",
-            "10th of Ramadan",
-            "Belbeis",
-            "Minya El Qamh",
-            "Abu Hammad",
-            "Faqous",
-            "Kafr Saqr",
-        ],
-
-        "Qalyubia": [
-            "Banha",
-            "Shubra El Kheima",
-            "Qalyub",
-            "Khanka",
-            "Kafr Shukr",
-            "Toukh",
-        ],
-
-        "Gharbia": [
-            "Tanta",
-            "El Mahalla El Kubra",
-            "Kafr El Zayat",
-            "Zefta",
-            "Santa",
-        ],
-
-        "Monufia": [
-            "Shibin El Kom",
-            "Menouf",
-            "Ashmoun",
-            "Sadat",
-            "Berket El Sab",
-        ],
-
-        "Beheira": [
-            "Damanhur",
-            "Kafr El Dawwar",
-            "Rashid",
-            "Edku",
-            "Abu Hummus",
-            "Hosh Issa",
-        ],
-
-        "Kafr El Sheikh": [
-            "Kafr El Sheikh",
-            "Desouk",
-            "Metoubes",
-            "Baltim",
-            "Sidi Salem",
-        ],
-
-        "Damietta": [
-            "Damietta",
-            "New Damietta",
-            "Faraskour",
-            "Kafr Saad",
-            "El Zarqa",
-        ],
-
-        "Port Said": [
-            "Port Said",
-            "Port Fouad",
-        ],
-
-        "Ismailia": [
-            "Ismailia",
-            "Fayed",
-            "El Qantara",
-            "Abu Suwir",
-        ],
-
-        "Suez": [
-            "Suez",
-            "Arbaeen",
-            "Ataka",
-            "Faisal",
-        ],
-
-        "North Sinai": [
-            "Arish",
-            "Sheikh Zuweid",
-            "Rafah",
-            "Bir El Abd",
-        ],
-
-        "South Sinai": [
-            "Sharm El Sheikh",
-            "Dahab",
-            "Nuweiba",
-            "Taba",
-            "Saint Catherine",
-        ],
-
-        "Red Sea": [
-            "Hurghada",
-            "Safaga",
-            "El Quseir",
-            "Marsa Alam",
-            "Ras Gharib",
-        ],
-
-        "Fayoum": [
-            "Fayoum",
-            "Sinnuris",
-            "Tamiya",
-            "Itsa",
-            "Abshaway",
-        ],
-
-        "Beni Suef": [
-            "Beni Suef",
-            "Al Wasta",
-            "Nasser",
-            "Biba",
-            "Samasta",
-        ],
-
-        "Minya": [
-            "Minya",
-            "Mallawi",
-            "Samalut",
-            "Maghagha",
-            "Beni Mazar",
-            "Abu Qurqas",
-        ],
-
-        "Asyut": [
-            "Asyut",
-            "Dairut",
-            "Manfalut",
-            "Qusiya",
-            "Abnoub",
-            "Abu Tig",
-        ],
-
-        "Sohag": [
-            "Sohag",
-            "Akhmim",
-            "Girga",
-            "Tahta",
-            "Juhayna",
-            "Al Maragha",
-        ],
-
-        "Qena": [
-            "Qena",
-            "Nag Hammadi",
-            "Qus",
-            "Naqada",
-            "Dishna",
-        ],
-
-        "Luxor": [
-            "Luxor",
-            "Esna",
-            "Armant",
-            "Al Bayadiya",
-        ],
-
-        "Aswan": [
-            "Aswan",
-            "Kom Ombo",
-            "Edfu",
-            "Daraw",
-        ],
-
-        "Matrouh": [
-            "Marsa Matrouh",
-            "El Alamein",
-            "Dabaa",
-            "Sallum",
-            "Siwa",
-        ],
-
-        "New Valley": [
-            "Kharga",
-            "Dakhla",
-            "Farafra",
-            "Baris",
-        ],
-    };
     const navigate = useNavigate();
     const { t, i18n } = useTranslation(["cases", "common"]);
     const isRtl = i18n.resolvedLanguage === "ar";
@@ -757,7 +526,7 @@ export default function CaseInfo() {
                                 >
                                     <option value="">{t("cases:selects.selectGovernorate")}</option>
 
-                                    {Object.keys(governorates).map((governorate) => (
+                                    {Object.keys(GOVERNORATES_BILINGUAL).map((governorate) => (
                                         <option key={governorate} value={governorate}>
                                             {governorate}
                                         </option>
@@ -794,7 +563,7 @@ export default function CaseInfo() {
                                             : t("cases:selects.selectGovernorateFirst")}
                                     </option>
 
-                                    {(governorates[data.governorate] || []).map((department) => (
+                                    {(GOVERNORATES_BILINGUAL[data.governorate] || []).map((department) => (
                                         <option key={department} value={department}>
                                             {department}
                                         </option>
@@ -953,7 +722,7 @@ export default function CaseInfo() {
                                     className={selectCls("locationGovernorate")}
                                 >
                                     <option value="">{t("cases:selects.selectGovernorate")}</option>
-                                    {Object.keys(governorates).map((governorate) => (
+                                    {Object.keys(GOVERNORATES_BILINGUAL).map((governorate) => (
                                         <option key={governorate} value={governorate}>
                                             {governorate}
                                         </option>

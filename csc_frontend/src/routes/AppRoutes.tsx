@@ -22,7 +22,6 @@ import CivilCaseInfo from "../pages/user/civil/civilCaseInfo";
 import CivilReview from "../pages/user/civil/CivilReview";
 import AdminCriminalReview from "../pages/admin/criminal/CriminalReview";
 import AdminCivilReview from "../pages/admin/civil/CivilReview";
-import AdminCorpsesReview from "../pages/admin/corpses/CorpsesReview";
 
 export default function AppRoutes() {
   return (
@@ -65,11 +64,6 @@ export default function AppRoutes() {
             <Route
               path="/admin/cases/:caseId/civil/review"
               element={<AdminCivilReview />}
-            />
-            
-            <Route
-              path="/admin/cases/:caseId/corpses/review"
-              element={<AdminCorpsesReview />}
             />
 
             <Route

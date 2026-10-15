@@ -390,6 +390,21 @@ export default function CorpsesCaseDetail({
                 onChange={(v) => handlers.patchCorpsesCaseInfo({ caseNumber: v })}
               />
               <EditableField
+                label={t("cases:labels.caseYear")}
+                value={corpsesInfo.caseYear}
+                onChange={(v) => handlers.patchCorpsesCaseInfo({ caseYear: v })}
+              />
+              <EditableField
+                label={t("cases:labels.governorate")}
+                value={corpsesInfo.governorate}
+                onChange={(v) => handlers.patchCorpsesCaseInfo({ governorate: v })}
+              />
+              <EditableField
+                label={t("cases:labels.policeDepartment")}
+                value={corpsesInfo.policeDepartment}
+                onChange={(v) => handlers.patchCorpsesCaseInfo({ policeDepartment: v })}
+              />
+              <EditableField
                 label={t("cases:labels.dateOfDiscovery")}
                 value={corpsesInfo.dateOfDiscovery}
                 onChange={(v) => handlers.patchCorpsesCaseInfo({ dateOfDiscovery: v })}

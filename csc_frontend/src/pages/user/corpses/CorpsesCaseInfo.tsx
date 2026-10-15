@@ -11,16 +11,21 @@ import {
   ArrowRight,
   FileText,
   Stethoscope,
+  ChevronDown,
 } from "lucide-react";
 import toast, { Toaster } from "react-hot-toast";
 import { z } from "zod";
 import { useCase } from "@/context/CaseContext";
 import type { CorpsesCaseInfo as CorpsesCaseInfoType } from "@/context/CaseContext";
 import type { ZodFormattedError } from "zod";
+import { GOVERNORATES_BILINGUAL } from "@/constants/governorates";
 
 const corpsesCaseInfoSchema = z.object({
   caseNumber: z
     .string().optional(),
+  caseYear: z.string().optional(),
+  governorate: z.string().optional(),
+  policeDepartment: z.string().optional(),
   dateOfDiscovery: z
     .string().optional(),
   inspectionDate: z.string().optional(),
@@ -59,6 +64,11 @@ const inputCls = (hasError: boolean) =>
     hasError ? "border-[#fecaca] ring-1 ring-[#fecaca]" : "border-[#dbe5ec]"
   } bg-white pl-9 sm:pl-10 pr-3 text-xs sm:text-sm text-[#475569] outline-none placeholder:text-[#64748b] focus:border-[#0089c7] focus:ring-1 focus:ring-[#0089c7]/20`;
 
+const selectCls = (hasError: boolean) =>
+  `h-10 sm:h-11 w-full appearance-none rounded-lg border ${
+    hasError ? "border-[#fecaca] ring-1 ring-[#fecaca]" : "border-[#dbe5ec]"
+  } bg-white px-3 pr-9 text-xs sm:text-sm text-[#475569] outline-none focus:border-[#0089c7] focus:ring-1 focus:ring-[#0089c7]/20`;
+
 const textareaCls = (hasError: boolean) =>
   `w-full min-h-[110px] sm:min-h-[130px] resize-y rounded-lg border ${
     hasError ? "border-[#fecaca] ring-1 ring-[#fecaca]" : "border-[#dbe5ec]"
@@ -78,6 +88,9 @@ export default function CorpsesCaseInfo() {
   const data = caseData.corpsesCaseInfo;
 
   const [fieldErrors, setFieldErrors] = useState<CorpsesCaseErrors | null>(null);
+  const [selectedGovernorate, setSelectedGovernorate] = useState<string>(
+    data.governorate || ""
+  );
 
   useEffect(() => {
     setCaseType("corpses");
@@ -153,15 +166,11 @@ export default function CorpsesCaseInfo() {
 
         <div className="overflow-hidden rounded-2xl sm:rounded-3xl border border-[#dbe5ec] bg-white p-4 sm:p-6 md:p-8 shadow-sm">
           <div className="grid grid-cols-1 gap-x-4 gap-y-4 sm:gap-x-6 sm:gap-y-5 md:grid-cols-2 md:gap-x-8 md:gap-y-6">
-            <div className="md:col-span-2">
+            <div>
               <label className={labelCls}>
                 {t("cases:labels.caseNumber")}
               </label>
               <div className="relative">
-                <div className={iconWrap}>
-                  <Hash size={16} className="sm:hidden" />
-                  <Hash size={18} className="hidden sm:block" />
-                </div>
                 <input
                   type="text"
                   value={data.caseNumber}
@@ -173,6 +182,91 @@ export default function CorpsesCaseInfo() {
                 />
               </div>
               <FieldError msg={errFor(fieldErrors, "caseNumber")} />
+            </div>
+
+            <div>
+              <label className={labelCls}>
+                {t("cases:labels.caseYear")}
+              </label>
+              <input
+                type="number"
+                min="1900"
+                max="2100"
+                value={data.caseYear}
+                onChange={(e) =>
+                  updateCorpsesCaseInfo({ caseYear: e.target.value })
+                }
+                placeholder={t("cases:selects.caseYear")}
+                className={selectCls(hasErr("caseYear")).replace("appearance-none", "").replace("pr-9", "pr-3")}
+              />
+              <FieldError msg={errFor(fieldErrors, "caseYear")} />
+            </div>
+
+            <div>
+              <label className={labelCls}>
+                {t("cases:labels.governorate")}
+              </label>
+              <div className="relative">
+                <select
+                  value={data.governorate}
+                  onChange={(e) => {
+                    const newGov = e.target.value;
+                    setSelectedGovernorate(newGov);
+                    updateCorpsesCaseInfo({
+                      governorate: newGov,
+                      policeDepartment: "",
+                    });
+                  }}
+                  className={selectCls(hasErr("governorate"))}
+                >
+                  <option value="">{t("cases:selects.selectGovernorate")}</option>
+                  {Object.keys(GOVERNORATES_BILINGUAL).map((gov) => (
+                    <option key={gov} value={gov}>
+                      {gov}
+                    </option>
+                  ))}
+                </select>
+                <ChevronDown
+                  size={14}
+                  className="pointer-events-none absolute right-3 top-1/2 -translate-y-1/2 text-[#64748b]"
+                />
+              </div>
+              <FieldError msg={errFor(fieldErrors, "governorate")} />
+            </div>
+
+            <div>
+              <label className={labelCls}>
+                {t("cases:labels.policeDepartment")}
+              </label>
+              <div className="relative">
+                <select
+                  value={data.policeDepartment}
+                  onChange={(e) =>
+                    updateCorpsesCaseInfo({
+                      policeDepartment: e.target.value,
+                    })
+                  }
+                  disabled={!selectedGovernorate}
+                  className={selectCls(hasErr("policeDepartment"))}
+                >
+                  <option value="">
+                    {selectedGovernorate
+                      ? t("cases:selects.selectPoliceDepartment")
+                      : t("cases:selects.selectGovernorateFirst")}
+                  </option>
+                  {selectedGovernorate &&
+                    GOVERNORATES_BILINGUAL[selectedGovernorate]?.map((dept) => (
+                      <option key={dept} value={dept}>
+                        {dept}
+                      </option>
+                    ))}
+                </select>
+                <ChevronDown
+                  size={14}
+                  className="pointer-events-none absolute right-3 top-1/2 -translate-y-1/2 text-[#64748b]"
+                />
+              </div>
+              <FieldError msg={errFor(fieldErrors, "policeDepartment")} />
             </div>
 
             <div>
