@@ -41,6 +41,9 @@ export type SubmitCasePayload = {
 
 export type CorpsesCaseInfoPayload = {
   caseNumber: string;
+  caseYear: string;
+  governorate: string;
+  policeDepartment: string;
   dateOfDiscovery: string;
   inspectionDate: string;
   locationOfBodyPresence: string;
@@ -300,6 +303,9 @@ export async function submitCorpsesCase(
   const caseRes = await api.post("/cases/", {
     case_type: "body",
     report_number: info.caseNumber,
+    case_year: info.caseYear ? Number(info.caseYear) : null,
+  governorate: info.governorate,
+  police_department: info.policeDepartment,
     date_of_discovery: info.dateOfDiscovery || null,
     inspection_date: info.inspectionDate || null,
     location_of_body_presence: info.locationOfBodyPresence,
