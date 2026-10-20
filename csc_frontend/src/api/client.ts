@@ -27,10 +27,18 @@ api.interceptors.response.use(
           if (data.refresh) localStorage.setItem("refresh", data.refresh);
           original.headers.Authorization = `Bearer ${data.access}`;
           return api(original);
-        } catch {
+        } catch (refreshError: any) {
+          // Network error: keep the session and tokens for later.
+          if (!refreshError.response) {
+            return Promise.reject(refreshError);
+          }
+
+          // Server rejected the refresh request.
           localStorage.removeItem("access");
           localStorage.removeItem("refresh");
           window.location.href = "/login";
+
+          return Promise.reject(refreshError);
         }
       } else {
         window.location.href = "/login";

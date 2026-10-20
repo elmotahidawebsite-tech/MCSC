@@ -158,7 +158,7 @@ export default function AdminCaseDetail() {
               stationUsername: c.stationUsername || "",
             },
             corpsesCaseInfo: {
-              caseNumber: c.report_number || "",
+              caseNumber: c.case_number || "",
               caseYear: c.case_year ? String(c.case_year) : "",
               governorate: c.governorate || "",
               policeDepartment: c.police_department || "",

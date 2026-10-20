@@ -302,7 +302,7 @@ export async function submitCorpsesCase(
 
   const caseRes = await api.post("/cases/", {
     case_type: "body",
-    report_number: info.caseNumber,
+    case_number: info.caseNumber,
     case_year: info.caseYear ? Number(info.caseYear) : null,
   governorate: info.governorate,
   police_department: info.policeDepartment,
