@@ -25,6 +25,7 @@ import {
 import { useCase } from "@/context/CaseContext";
 import type { CorpsesSpecifications } from "@/context/CaseContext";
 import { submitCorpsesCase } from "@/api/cases";
+import { syncCurrentDraft } from "@/api/caseSync";
 import { api } from "@/api/client";
 
 function Field({
@@ -384,7 +385,7 @@ function CorpseCard({ corpse, cardIndex, isExpanded, onToggleExpand, translateWe
 
 export default function CorpsesReview() {
   const navigate = useNavigate();
-  const { caseData, resetCase } = useCase();
+  const { caseData, resetCase, localId, updateSyncMetadata, syncStatus, serverCaseId } = useCase();
   const { t } = useTranslation(["cases", "common"]);
   const [submitting, setSubmitting] = useState(false);
   const [expanded, setExpanded] = useState<Record<number, boolean>>(() => ({ 0: true }));
@@ -458,9 +459,35 @@ export default function CorpsesReview() {
       return;
     }
 
+    // Check if already synced
+    if (syncStatus === "synced" && serverCaseId) {
+      toast(t("cases:review.alreadySubmitted") || "This case was already submitted.", {
+        icon: "ℹ️",
+        duration: 3000,
+      });
+      navigate("/user/dashboard", { replace: true });
+      return;
+    }
+
     try {
       setSubmitting(true);
 
+      // Check online status
+      if (!navigator.onLine) {
+        // Offline: Mark as pending sync
+        await syncCurrentDraft(caseData, localId, updateSyncMetadata);
+        
+        toast.success(
+          t("cases:review.savedForSync") || "Draft saved. Will sync when online.",
+          { duration: 4000, icon: <CheckCircle2 className="text-green-600" size={20} /> }
+        );
+
+        navigate("/user/dashboard", { replace: true });
+        // Don't reset case - keep it for sync
+        return;
+      }
+
+      // Online submission - existing flow
       const caseId: number = await submitCorpsesCase(caseData, true);
       console.log("🎯 Submitted corpses case ID:", caseId);
 
@@ -499,9 +526,13 @@ export default function CorpsesReview() {
       }, 300);
     } catch (e) {
       console.error(e);
-      toast.error(
-        t("cases:review.submitFailed")
-      );
+      if (!navigator.onLine) {
+        toast.error(t("cases:review.offlineError") || "No connection. Draft saved for later sync.");
+      } else {
+        toast.error(
+          t("cases:review.submitFailed")
+        );
+      }
     } finally {
       setSubmitting(false);
     }

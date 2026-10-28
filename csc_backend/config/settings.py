@@ -9,7 +9,7 @@ BASE_DIR = Path(__file__).resolve().parent.parent
 
 SECRET_KEY = os.environ.get("DJANGO_SECRET_KEY", "dev-only-change-me")
 DEBUG = os.environ.get("DJANGO_DEBUG", "True") == "True"
-ALLOWED_HOSTS = os.environ.get("DJANGO_ALLOWED_HOSTS","http://10.227.221.88:5173").split(",")
+ALLOWED_HOSTS = os.environ.get("DJANGO_ALLOWED_HOSTS","http://192.168.1.6:5173").split(",")
 ALLOWED_HOSTS = ["*"]
 INSTALLED_APPS = [
     "django.contrib.admin",
@@ -128,5 +128,5 @@ SIMPLE_JWT = {
 
 # --- CORS (MVP: open for local frontend dev, tighten later) ---
 CORS_ALLOWED_ORIGINS = os.environ.get(
-    "CORS_ALLOWED_ORIGINS", "http://localhost:5173,http://10.227.221.88:5173"
+    "CORS_ALLOWED_ORIGINS", "http://localhost:5173,http://192.168.1.6:5173,http://localhost:4173,http://192.168.1.6:4173"
 ).split(",")

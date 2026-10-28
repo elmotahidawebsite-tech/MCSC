@@ -32,7 +32,7 @@ from .serializers import (
 # ===================== قفلين للصلاحيات =====================
 from django.core.exceptions import PermissionDenied
 from django.http import Http404
-
+from django.db import transaction
 
 def ensure_case_view(case, user):
     """مشاهدة/تحميل: الأدمن أي حاجة — الضابط قضاياه هو بس (أي حالة)."""
@@ -1056,69 +1056,218 @@ class SyncView(APIView):
 
     def post(self, request):
         if request.user.role == User.Role.SUPPORT:
-            return Response({"detail": "غير مصرح لك."}, status=403)
+            return Response(
+                {"detail": "غير مصرح لك."},
+                status=403,
+            )
+
+        cases_data = request.data.get("cases", [])
+
+        if not isinstance(cases_data, list):
+            return Response(
+                {"detail": "الحقل cases لازم يكون قائمة."},
+                status=400,
+            )
+
         results = []
-        for item in request.data.get("cases", []):
+
+        for item in cases_data:
             local_id = item.get("local_id")
+
             if not local_id:
-                results.append({"local_id": None, "status": "error", "detail": "local_id مطلوب"})
+                results.append({
+                    "local_id": None,
+                    "status": "error",
+                    "detail": "local_id مطلوب",
+                })
                 continue
 
-            existing = SyncRecord.objects.filter(
-                user=request.user, local_id=local_id, status=SyncRecord.Status.SYNCED
-            ).first()
-            if existing:
-                results.append({"local_id": local_id, "status": "already_synced",
-                                "case_id": existing.case_id})
-                continue
-
-            server_case_id = item.get("server_case_id")
-            if server_case_id:
-                try:
-                    case = Case.objects.get(pk=server_case_id, created_by=request.user)
-                except Case.DoesNotExist:
-                    results.append({"local_id": local_id, "status": "error", "detail": "القضية غير موجودة"})
-                    continue
-                if case.status != Case.Status.DRAFT:
-                    self._record(local_id, SyncRecord.Status.CONFLICT, "القضية مرسلة بالفعل")
-                    results.append({"local_id": local_id, "status": "conflict",
-                                    "detail": "القضية مرسلة بالفعل ولا يمكن تعديلها"})
-                    continue
-                base = item.get("base_updated_at")
-                if base and case.updated_at.isoformat() != base:
-                    self._record(local_id, SyncRecord.Status.CONFLICT, "اتعدلت على السيرفر بعد نسختك")
-                    results.append({"local_id": local_id, "status": "conflict",
-                                    "detail": "القضية اتعدلت على السيرفر بعد نسختك المحلية",
-                                    "server_updated_at": case.updated_at})
-                    continue
-                serializer = SyncCaseSerializer(case, data=item.get("data", {}),
-                                                partial=True, context={"request": request})
-            else:
-                serializer = SyncCaseSerializer(data=item.get("data", {}),
-                                                context={"request": request})
-
-            if not serializer.is_valid():
-                self._record(local_id, SyncRecord.Status.ERROR, str(serializer.errors))
-                results.append({"local_id": local_id, "status": "error", "detail": serializer.errors})
+            if not isinstance(local_id, str) or len(local_id) > 64:
+                results.append({
+                    "local_id": local_id,
+                    "status": "error",
+                    "detail": "local_id غير صالح أو أطول من المسموح.",
+                })
                 continue
 
             try:
-                case = serializer.save(created_by=request.user)
-                self._record(local_id, SyncRecord.Status.SYNCED, "", case=case)
-                results.append({"local_id": local_id, "status": "synced", "case_id": case.id,
-                                "case_code": case.case_code, "updated_at": case.updated_at})
-            except Exception as exc:
-                self._record(local_id, SyncRecord.Status.ERROR, str(exc))
-                results.append({"local_id": local_id, "status": "error", "detail": str(exc)})
+                with transaction.atomic():
+                    # منع إعادة إنشاء قضية سبق ربطها بهذا local_id.
+                    record = (
+                        SyncRecord.objects
+                        .select_for_update()
+                        .filter(user=request.user, local_id=local_id)
+                        .first()
+                    )
+
+                    if record and record.status == SyncRecord.Status.SYNCED:
+                        results.append({
+                            "local_id": local_id,
+                            "status": "already_synced",
+                            "case_id": record.case_id,
+                        })
+                        continue
+
+                    # لا نعيد إنشاء قضية مرتبطة بسجل مزامنة سابق.
+                    if record and record.case_id:
+                        results.append({
+                            "local_id": local_id,
+                            "status": (
+                                "conflict"
+                                if record.status == SyncRecord.Status.CONFLICT
+                                else "error"
+                            ),
+                            "case_id": record.case_id,
+                            "detail": (
+                                record.detail
+                                or "سجل المزامنة مرتبط بقضية موجودة؛ راجع الحالة قبل إعادة المحاولة."
+                            ),
+                        })
+                        continue
+
+                    server_case_id = item.get("server_case_id")
+
+                    if server_case_id:
+                        try:
+                            case = Case.objects.get(
+                                pk=server_case_id,
+                                created_by=request.user,
+                            )
+                        except (Case.DoesNotExist, ValueError, TypeError):
+                            results.append({
+                                "local_id": local_id,
+                                "status": "error",
+                                "detail": "القضية غير موجودة أو لا تملك صلاحية الوصول إليها.",
+                            })
+                            continue
+
+                        if case.status != Case.Status.DRAFT:
+                            self._record(
+                                local_id,
+                                SyncRecord.Status.CONFLICT,
+                                "القضية مرسلة بالفعل.",
+                                case=case,
+                            )
+                            results.append({
+                                "local_id": local_id,
+                                "status": "conflict",
+                                "detail": "القضية مرسلة بالفعل ولا يمكن تعديلها.",
+                                "case_id": case.id,
+                            })
+                            continue
+
+                        base_updated_at = item.get("base_updated_at")
+
+                        if (
+                            base_updated_at
+                            and case.updated_at.isoformat() != base_updated_at
+                        ):
+                            self._record(
+                                local_id,
+                                SyncRecord.Status.CONFLICT,
+                                "القضية اتعدلت على السيرفر بعد نسختك المحلية.",
+                                case=case,
+                            )
+                            results.append({
+                                "local_id": local_id,
+                                "status": "conflict",
+                                "detail": "القضية اتعدلت على السيرفر بعد نسختك المحلية.",
+                                "case_id": case.id,
+                                "server_updated_at": case.updated_at.isoformat(),
+                            })
+                            continue
+
+                        serializer = SyncCaseSerializer(
+                            case,
+                            data=item.get("data", {}),
+                            partial=True,
+                            context={"request": request},
+                        )
+                    else:
+                        serializer = SyncCaseSerializer(
+                            data=item.get("data", {}),
+                            context={"request": request},
+                        )
+
+                    if not serializer.is_valid():
+                        detail = serializer.errors
+
+                        self._record(
+                            local_id,
+                            SyncRecord.Status.ERROR,
+                            str(detail),
+                        )
+
+                        results.append({
+                            "local_id": local_id,
+                            "status": "error",
+                            "detail": detail,
+                        })
+                        continue
+
+                    # إنشاء/تحديث القضية وسجل المزامنة في معاملة واحدة.
+                    case = serializer.save(created_by=request.user)
+
+                    # Check if any media failed to process
+                    media_failures = getattr(case, '_sync_media_failures', None)
+                    if media_failures:
+                        # Case created but some media failed
+                        warning_detail = f"Case created but {len(media_failures)} media file(s) failed: {'; '.join(media_failures[:3])}"
+                        if len(media_failures) > 3:
+                            warning_detail += f" ... and {len(media_failures) - 3} more"
+                        
+                        self._record(
+                            local_id,
+                            SyncRecord.Status.SYNCED,  # Still synced, but with warnings
+                            warning_detail,
+                            case=case,
+                        )
+
+                        results.append({
+                            "local_id": local_id,
+                            "status": "synced",
+                            "case_id": case.id,
+                            "case_code": case.case_code,
+                            "updated_at": case.updated_at.isoformat(),
+                            "warnings": media_failures,  # Include all failures in response
+                        })
+                    else:
+                        # Full success
+                        self._record(
+                            local_id,
+                            SyncRecord.Status.SYNCED,
+                            "",
+                            case=case,
+                        )
+
+                        results.append({
+                            "local_id": local_id,
+                            "status": "synced",
+                            "case_id": case.id,
+                            "case_code": case.case_code,
+                            "updated_at": case.updated_at.isoformat(),
+                        })
+
+            except Exception:
+                # الخطأ لا يُعرض بتفاصيل داخلية للسيرفر للعميل.
+                results.append({
+                    "local_id": local_id,
+                    "status": "error",
+                    "detail": "فشلت المزامنة. راجع سجل أخطاء السيرفر قبل إعادة المحاولة.",
+                })
 
         return Response({"results": results})
 
     def _record(self, local_id, status, detail, case=None):
         SyncRecord.objects.update_or_create(
-            user=self.request.user, local_id=local_id,
-            defaults={"status": status, "detail": detail, "case": case},
+            user=self.request.user,
+            local_id=local_id,
+            defaults={
+                "status": status,
+                "detail": detail,
+                "case": case,
+            },
         )
-
 
 class SyncStatusView(APIView):
     permission_classes = [permissions.IsAuthenticated]

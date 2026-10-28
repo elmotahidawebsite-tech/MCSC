@@ -9,23 +9,22 @@ export default function Dashboard() {
   const { t, i18n } = useTranslation(["dashboard", "common"]);
   const isRtl = i18n.resolvedLanguage === "ar";
 
+
   function goToCaseInfo() {
-    resetCase();
     setCaseType("criminal");
     navigate("/user/cases/info");
   }
 
   function goToCorpsesCaseInfo() {
-    resetCase();
     setCaseType("corpses");
     navigate("/user/corpses/info");
   }
 
   function goToCivilCaseInfo() {
-    resetCase();
     setCaseType("civil");
     navigate("/user/civil/info");
   }
+
 
   const caseCards = [
     {

@@ -4,7 +4,38 @@ from rest_framework import serializers
 from .models import (
     Case, Evidence, EvidenceMedia, Person, PersonImage, SyncRecord,
     Body, BodyImage, CaseImage, MediaType,
+    b64_encode, b64_decode, make_image_versions,
 )
+
+
+# ================= Sync-specific serializers with media support =================
+
+class SyncPersonImageSerializer(serializers.Serializer):
+    """Accepts base64-encoded images during sync."""
+    file_name = serializers.CharField()
+    mime_type = serializers.CharField()
+    data = serializers.CharField()  # Base64 data URL
+
+
+class SyncEvidenceMediaSerializer(serializers.Serializer):
+    """Accepts base64-encoded media during sync."""
+    file_name = serializers.CharField()
+    mime_type = serializers.CharField()
+    data = serializers.CharField()  # Base64 data URL
+
+
+class SyncBodyImageSerializer(serializers.Serializer):
+    """Accepts base64-encoded images during sync."""
+    file_name = serializers.CharField()
+    mime_type = serializers.CharField()
+    data = serializers.CharField()  # Base64 data URL
+
+
+class SyncCaseImageSerializer(serializers.Serializer):
+    """Accepts base64-encoded case images during sync."""
+    file_name = serializers.CharField()
+    mime_type = serializers.CharField()
+    data = serializers.CharField()  # Base64 data URL
 
 
 # ================= Evidence =================
@@ -238,33 +269,204 @@ class CaseDetailSerializer(CaseSerializer):
 
 # ================= Sync =================
 
+class SyncPersonSerializer(serializers.Serializer):
+    """Person with embedded images for sync."""
+    role = serializers.ChoiceField(choices=["victim", "suspect", "reporter"])
+    full_name = serializers.CharField()
+    national_id = serializers.CharField(allow_blank=True, required=False)
+    gender = serializers.CharField(allow_blank=True, required=False)
+    nationality = serializers.CharField(allow_blank=True, required=False)
+    person_notes = serializers.CharField(allow_blank=True, required=False)
+    images = SyncPersonImageSerializer(many=True, required=False)
+
+
+class SyncEvidenceSerializer(serializers.Serializer):
+    """Evidence with embedded media for sync."""
+    evidence_number = serializers.CharField(allow_blank=True, required=False)
+    evidence_type = serializers.CharField(allow_blank=True, required=False)
+    description = serializers.CharField(allow_blank=True, required=False)
+    media = SyncEvidenceMediaSerializer(many=True, required=False)
+
+
+class SyncBodySerializer(serializers.Serializer):
+    """Body with embedded images for sync."""
+    gender = serializers.CharField(allow_blank=True, allow_null=True, required=False)
+    approximate_age = serializers.CharField(allow_blank=True, allow_null=True, required=False)
+    approximate_height = serializers.CharField(allow_blank=True, allow_null=True, required=False)
+    weight = serializers.CharField(allow_blank=True, allow_null=True, required=False)
+    discovery_circumstances = serializers.CharField(allow_blank=True, allow_null=True, required=False)
+    distinguishing_marks = serializers.CharField(allow_blank=True, allow_null=True, required=False)
+    underwear = serializers.CharField(allow_blank=True, allow_null=True, required=False)
+    outerwear = serializers.CharField(allow_blank=True, allow_null=True, required=False)
+    facial_features = serializers.CharField(allow_blank=True, allow_null=True, required=False)
+    facial_features_reason = serializers.CharField(allow_blank=True, allow_null=True, required=False)
+    hand_fingerprints = serializers.CharField(allow_blank=True, allow_null=True, required=False)
+    hand_fingerprints_reason = serializers.CharField(allow_blank=True, allow_null=True, required=False)
+    biological_sample = serializers.ListField(child=serializers.CharField(), required=False)
+    specifications_notes = serializers.CharField(allow_blank=True, allow_null=True, required=False)
+    images = SyncBodyImageSerializer(many=True, required=False)
+
+
 class SyncCaseSerializer(CaseSerializer):
-    """بتقبل القضية كاملة nested عشان الـ Sync."""
-    persons = PersonSerializer(many=True, required=False)
-    evidences = EvidenceSerializer(many=True, required=False)
-    bodies = BodySerializer(many=True, required=False)
+    """Accepts full case with nested persons, evidence, bodies, and images."""
+    persons = SyncPersonSerializer(many=True, required=False)
+    evidences = SyncEvidenceSerializer(many=True, required=False)
+    bodies = SyncBodySerializer(many=True, required=False)
+    case_images = SyncCaseImageSerializer(many=True, required=False)
 
     class Meta(CaseSerializer.Meta):
-        fields = CaseSerializer.Meta.fields + ["persons", "evidences", "bodies"]
+        fields = CaseSerializer.Meta.fields + ["persons", "evidences", "bodies", "case_images"]
 
     @transaction.atomic
     def create(self, validated_data):
         persons_data = validated_data.pop("persons", [])
         evidences_data = validated_data.pop("evidences", [])
         bodies_data = validated_data.pop("bodies", [])
+        case_images_data = validated_data.pop("case_images", [])
+        
         case = Case.objects.create(**validated_data)
-        for p in persons_data:
-            Person.objects.create(case=case, **p)
-        for e in evidences_data:
-            Evidence.objects.create(case=case, collector=case.created_by, **e)
-        for b in bodies_data:
-            Body.objects.create(case=case, **b)
+        
+        # Track media failures
+        failed_media = []
+        
+        # Create persons with images
+        for p_data in persons_data:
+            images_data = p_data.pop('images', [])
+            person = Person.objects.create(case=case, **p_data)
+            
+            for img_data in images_data:
+                try:
+                    # Extract base64 data (remove data:image/...;base64, prefix if present)
+                    data_url = img_data['data']
+                    if ',' in data_url:
+                        data_url = data_url.split(',', 1)[1]
+                    
+                    raw = b64_decode(data_url)
+                    compressed_b64, thumb_b64 = make_image_versions(raw)
+                    
+                    PersonImage.objects.create(
+                        person=person,
+                        file_name=img_data['file_name'],
+                        mime_type=img_data['mime_type'],
+                        image_data=b64_encode(raw),
+                        compressed=compressed_b64,
+                        thumbnail=thumb_b64,
+                        media_type=MediaType.IMAGE,
+                    )
+                except Exception as e:
+                    error_msg = f"Person image '{img_data.get('file_name', 'unknown')}': {str(e)}"
+                    print(f"⚠️ {error_msg}")
+                    failed_media.append(error_msg)
+        
+        # Create evidence with media
+        for e_data in evidences_data:
+            media_data = e_data.pop('media', [])
+            evidence = Evidence.objects.create(
+                case=case,
+                collector=case.created_by,
+                **e_data
+            )
+            
+            for media_item in media_data:
+                try:
+                    data_url = media_item['data']
+                    if ',' in data_url:
+                        data_url = data_url.split(',', 1)[1]
+                    
+                    raw = b64_decode(data_url)
+                    
+                    # Only create versions for images
+                    mime = media_item['mime_type']
+                    if mime.startswith('image/'):
+                        compressed_b64, thumb_b64 = make_image_versions(raw)
+                        media_type = MediaType.IMAGE
+                    else:
+                        compressed_b64, thumb_b64 = "", ""
+                        if mime.startswith('video/'):
+                            media_type = MediaType.VIDEO
+                        elif mime.startswith('audio/'):
+                            media_type = MediaType.AUDIO
+                        else:
+                            media_type = MediaType.DOCUMENT
+                    
+                    EvidenceMedia.objects.create(
+                        evidence=evidence,
+                        file_name=media_item['file_name'],
+                        mime_type=mime,
+                        file_data=b64_encode(raw),
+                        compressed=compressed_b64,
+                        thumbnail=thumb_b64,
+                        media_type=media_type,
+                    )
+                except Exception as e:
+                    error_msg = f"Evidence media '{media_item.get('file_name', 'unknown')}': {str(e)}"
+                    print(f"⚠️ {error_msg}")
+                    failed_media.append(error_msg)
+        
+        # Create bodies with images
+        for b_data in bodies_data:
+            images_data = b_data.pop('images', [])
+            body = Body.objects.create(case=case, **b_data)
+            
+            for img_data in images_data:
+                try:
+                    data_url = img_data['data']
+                    if ',' in data_url:
+                        data_url = data_url.split(',', 1)[1]
+                    
+                    raw = b64_decode(data_url)
+                    compressed_b64, thumb_b64 = make_image_versions(raw)
+                    
+                    BodyImage.objects.create(
+                        body=body,
+                        file_name=img_data['file_name'],
+                        mime_type=img_data['mime_type'],
+                        image_data=b64_encode(raw),
+                        compressed=compressed_b64,
+                        thumbnail=thumb_b64,
+                        media_type=MediaType.IMAGE,
+                    )
+                except Exception as e:
+                    error_msg = f"Body image '{img_data.get('file_name', 'unknown')}': {str(e)}"
+                    print(f"⚠️ {error_msg}")
+                    failed_media.append(error_msg)
+        
+        # Create case images (for civil cases)
+        for img_data in case_images_data:
+            try:
+                data_url = img_data['data']
+                if ',' in data_url:
+                    data_url = data_url.split(',', 1)[1]
+                
+                raw = b64_decode(data_url)
+                compressed_b64, thumb_b64 = make_image_versions(raw)
+                
+                CaseImage.objects.create(
+                    case=case,
+                    file_name=img_data['file_name'],
+                    mime_type=img_data['mime_type'],
+                    image_data=b64_encode(raw),
+                    compressed=compressed_b64,
+                    thumbnail=thumb_b64,
+                    media_type=MediaType.IMAGE,
+                )
+            except Exception as e:
+                error_msg = f"Case image '{img_data.get('file_name', 'unknown')}': {str(e)}"
+                print(f"⚠️ {error_msg}")
+                failed_media.append(error_msg)
+        
+        # Store failed media errors in case for later inspection
+        if failed_media:
+            case._sync_media_failures = failed_media
+        
         return case
 
     def update(self, instance, validated_data):
+        # Remove nested data for updates (not supported in sync context)
         validated_data.pop("persons", None)
         validated_data.pop("evidences", None)
         validated_data.pop("bodies", None)
+        validated_data.pop("case_images", None)
         return super().update(instance, validated_data)
 
 
