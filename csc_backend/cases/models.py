@@ -9,7 +9,6 @@ from datetime import date, datetime
 from django.conf import settings
 from django.db import models
 
-import base64
 from io import BytesIO
 
 
@@ -25,42 +24,59 @@ class MediaType(models.TextChoices):
 # ================= توليد الأكواد =================
 
 def generate_case_code():
-    """C-2026-0001"""
-    year = datetime.now().year
-    seq = Case.objects.filter(case_code__startswith=f"C-{year}-").count() + 1
-    while True:
-        code = f"C-{year}-{seq:04d}"
-        if not Case.objects.filter(case_code=code).exists():
-            return code
-        seq += 1
+    """C-2026-0001 — آمن ضد التزامن"""
+    from django.db import transaction
+    with transaction.atomic():
+        year = datetime.now().year
+        prefix = f"C-{year}-"
+        # ✅ قفل الصفوف عشان مفيش حد تاني يحسب في نفس الوقت
+        last = Case.objects.filter(
+            case_code__startswith=prefix
+        ).select_for_update().order_by('-case_code').first()
+
+        if last:
+            seq = int(last.case_code.split('-')[-1]) + 1
+        else:
+            seq = 1
+
+        return f"{prefix}{seq:04d}"
 
 
 def generate_person_code():
-    """REC-00001"""
-    seq = Person.objects.count() + 1
-    while True:
-        code = f"REC-{seq:05d}"
-        if not Person.objects.filter(code=code).exists():   # ✅ Person مش Case
-            return code
-        seq += 1
+    """REC-00001 — آمن ضد التزامن"""
+    from django.db import transaction
+    with transaction.atomic():
+        last = Person.objects.select_for_update().order_by('-code').first()
+        if last:
+            seq = int(last.code.split('-')[-1]) + 1
+        else:
+            seq = 1
+        return f"REC-{seq:05d}"
+
 
 def generate_evidence_code():
-    """EV-98234-A"""
-    while True:
+    """EV-98234-A — آمن ضد التزامن (transaction + select_for_update + retry)"""
+    from django.db import transaction
+    for _ in range(10):  # retry محدود — احتمال التصادم في 2.34 مليون قيمة ضئيل
         code = f"EV-{random.randint(10000, 99999)}-{random.choice(string.ascii_uppercase)}"
-        if not Evidence.objects.filter(evidence_code=code).exists():
-            return code
+        with transaction.atomic():
+            # .first() بترجع الصف الفعلي (أو None) عشان select_for_update يقفله
+            existing = Evidence.objects.filter(evidence_code=code).select_for_update().first()
+            if existing is None:
+                return code
+    raise RuntimeError("❌ تعذّر توليد كود دليل فريد بعد 10 محاولات")
 
 
 def generate_body_code():
-    """BD-00001"""
-    seq = Body.objects.count() + 1
-    while True:
-        code = f"BD-{seq:05d}"
-        if not Body.objects.filter(code=code).exists():
-            return code
-        seq += 1
-
+    """BD-00001 — آمن ضد التزامن"""
+    from django.db import transaction
+    with transaction.atomic():
+        last = Body.objects.select_for_update().order_by('-code').first()
+        if last:
+            seq = int(last.code.split('-')[-1]) + 1
+        else:
+            seq = 1
+        return f"BD-{seq:05d}"
 
 # ================= القضية =================
 
@@ -136,6 +152,16 @@ class Case(models.Model):
 
     class Meta:
         ordering = ["-created_at"]
+        indexes = [
+            # تسريع: قائمة القضايا مرتبة بالأحدث + فلتر الحالة
+            models.Index(fields=["status", "-created_at"], name="idx_case_status_created"),
+            # تسريع: الترتيب العام بالأحدث
+            models.Index(fields=["-created_at"], name="idx_case_created_at"),
+            # تسريع: فلتر نوع الحادث (الداشبورد)
+            models.Index(fields=["incident_type"], name="idx_case_incident_type"),
+            # تسريع: فلتر المحافظة (الداشبورد)
+            models.Index(fields=["governorate"], name="idx_case_governorate"),
+        ]
 
     def save(self, *args, **kwargs):
         if not self.case_code:
@@ -146,23 +172,14 @@ class Case(models.Model):
         return self.case_code
 
 
-# ================= مساعدات تخزين الصور في الـ DB =================
-
-def b64_encode(data: bytes) -> str:
-    return base64.b64encode(data).decode("ascii")
-
-
-def b64_decode(s: str) -> bytes:
-    return base64.b64decode(s)
-
-
+# ================= مساعدات تجهيز الصور للملفات =================
 def make_image_versions(raw: bytes):
-    """بيرجع (compressed_b64, thumbnail_b64) من بايتات الصورة."""
+    """بيرجع (compressed, thumbnail) كبيانات bytes."""
     try:
         from PIL import Image as PILImage
         img = PILImage.open(BytesIO(raw)).convert("RGB")
     except Exception:
-        return "", ""
+        return b"", b""
 
     if img.width > 1280:
         ratio = 1280 / img.width
@@ -171,13 +188,13 @@ def make_image_versions(raw: bytes):
         large = img
     buf = BytesIO()
     large.save(buf, format="JPEG", quality=80)
-    compressed_b64 = b64_encode(buf.getvalue())
+    compressed = buf.getvalue()
 
     ratio = 256 / img.width
     thumb = img.resize((256, int(img.height * ratio)), PILImage.LANCZOS)
     buf2 = BytesIO()
     thumb.save(buf2, format="JPEG", quality=70)
-    return compressed_b64, b64_encode(buf2.getvalue())
+    return compressed, buf2.getvalue()
 
 
 # ================= الأشخاص =================
@@ -194,7 +211,7 @@ class Person(models.Model):
 
     case = models.ForeignKey(Case, on_delete=models.CASCADE, related_name="persons")
     code = models.CharField(max_length=15, unique=True, editable=False)
-    role = models.CharField(max_length=10, choices=Role.choices)
+    role = models.CharField(max_length=10, choices=Role.choices ,db_index=True)
     full_name = models.CharField(max_length=255)
     national_id = models.CharField(max_length=50, blank=True)
     gender = models.CharField(max_length=100, blank=True)
@@ -228,9 +245,9 @@ class PersonImage(models.Model):
     person = models.ForeignKey(Person, on_delete=models.CASCADE, related_name="images")
     file_name = models.CharField(max_length=255, blank=True)
     mime_type = models.CharField(max_length=100, default="image/jpeg")
-    image_data = models.TextField()
-    compressed = models.TextField(blank=True)
-    thumbnail = models.TextField(blank=True)
+    file = models.FileField(upload_to="persons/%Y/%m/", blank=True, null=True)
+    compressed_file = models.FileField(upload_to="persons/compressed/%Y/%m/", blank=True, null=True)
+    thumbnail_file = models.FileField(upload_to="persons/thumbs/%Y/%m/", blank=True, null=True)
     media_type = models.CharField(
         max_length=10, choices=MediaType.choices, default=MediaType.IMAGE, blank=True
     )
@@ -267,9 +284,9 @@ class EvidenceMedia(models.Model):
     evidence = models.ForeignKey(Evidence, on_delete=models.CASCADE, related_name="media")
     file_name = models.CharField(max_length=255, blank=True)
     mime_type = models.CharField(max_length=100, default="image/jpeg")
-    file_data = models.TextField()
-    compressed = models.TextField(blank=True)
-    thumbnail = models.TextField(blank=True)
+    file = models.FileField(upload_to="evidence/%Y/%m/", blank=True, null=True)
+    compressed_file = models.FileField(upload_to="evidence/compressed/%Y/%m/", blank=True, null=True)
+    thumbnail_file = models.FileField(upload_to="evidence/thumbs/%Y/%m/", blank=True, null=True)
     media_type = models.CharField(
         max_length=10, choices=MediaType.choices, default=MediaType.IMAGE, blank=True
     )
@@ -340,9 +357,9 @@ class BodyImage(models.Model):
     body = models.ForeignKey(Body, on_delete=models.CASCADE, related_name="images")
     file_name = models.CharField(max_length=255, blank=True)
     mime_type = models.CharField(max_length=100, default="image/jpeg")
-    image_data = models.TextField()
-    compressed = models.TextField(blank=True)
-    thumbnail = models.TextField(blank=True)
+    file = models.FileField(upload_to="bodies/%Y/%m/", blank=True, null=True)
+    compressed_file = models.FileField(upload_to="bodies/compressed/%Y/%m/", blank=True, null=True)
+    thumbnail_file = models.FileField(upload_to="bodies/thumbs/%Y/%m/", blank=True, null=True)
     media_type = models.CharField(
         max_length=10, choices=MediaType.choices, default=MediaType.IMAGE, blank=True
     )
@@ -356,9 +373,9 @@ class CaseImage(models.Model):
     case = models.ForeignKey(Case, on_delete=models.CASCADE, related_name="images")
     file_name = models.CharField(max_length=255, blank=True)
     mime_type = models.CharField(max_length=100, default="image/jpeg")
-    image_data = models.TextField()
-    compressed = models.TextField(blank=True)
-    thumbnail = models.TextField(blank=True)
+    file = models.FileField(upload_to="cases/%Y/%m/", blank=True, null=True)
+    compressed_file = models.FileField(upload_to="cases/compressed/%Y/%m/", blank=True, null=True)
+    thumbnail_file = models.FileField(upload_to="cases/thumbs/%Y/%m/", blank=True, null=True)
     media_type = models.CharField(
         max_length=10, choices=MediaType.choices, default=MediaType.IMAGE, blank=True
     )

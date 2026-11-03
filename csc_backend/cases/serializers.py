@@ -3,7 +3,7 @@ from rest_framework import serializers
 
 from .models import (
     Case, Evidence, EvidenceMedia, Person, PersonImage, SyncRecord,
-    Body, BodyImage, CaseImage, MediaType,
+    Body, BodyImage, CaseImage,
 )
 
 
@@ -19,17 +19,14 @@ class EvidenceMediaSerializer(serializers.ModelSerializer):
         model = EvidenceMedia
         fields = ["id", "file", "compressed", "thumbnail", "media_type", "file_name", "uploaded_at"]
 
-    def get_file(self, obj):
-        # ✅ الصور بس base64 — الفيديو والمستندات عبر /media/{id}/download/
-        if obj.media_type == MediaType.IMAGE:
-            return f"data:{obj.mime_type};base64,{obj.file_data}"
-        return f"/api/media/{obj.id}/download/"
+    def get_file(self, obj) -> str:
+        return obj.file.url if obj.file else ""
 
-    def get_compressed(self, obj):
-        return f"data:image/jpeg;base64,{obj.compressed}" if obj.compressed else None
+    def get_compressed(self, obj) -> str:
+        return obj.compressed_file.url if obj.compressed_file else ""
 
-    def get_thumbnail(self, obj):
-        return f"data:image/jpeg;base64,{obj.thumbnail}" if obj.thumbnail else None
+    def get_thumbnail(self, obj) -> str:
+        return obj.thumbnail_file.url if obj.thumbnail_file else ""
 
 
 class EvidenceSerializer(serializers.ModelSerializer):
@@ -57,23 +54,21 @@ class PersonImageSerializer(serializers.ModelSerializer):
         model = PersonImage
         fields = ["id", "image", "compressed", "thumbnail", "media_type", "file_name", "uploaded_at"]
 
-    def get_image(self, obj):
-        if obj.media_type == MediaType.IMAGE:
-            return f"data:{obj.mime_type};base64,{obj.image_data}"
-        return f"/api/media/{obj.id}/download/"
+    def get_image(self, obj) -> str:
+        return obj.file.url if obj.file else ""
 
-    def get_compressed(self, obj):
-        return f"data:image/jpeg;base64,{obj.compressed}" if obj.compressed else None
+    def get_compressed(self, obj) -> str:
+        return obj.compressed_file.url if obj.compressed_file else ""
 
-    def get_thumbnail(self, obj):
-        return f"data:image/jpeg;base64,{obj.thumbnail}" if obj.thumbnail else None
+    def get_thumbnail(self, obj) -> str:
+        return obj.thumbnail_file.url if obj.thumbnail_file else ""
 
 
 class PersonSerializer(serializers.ModelSerializer):
     note = serializers.CharField(source="person_notes", required=False, allow_blank=True)
 
     images = PersonImageSerializer(many=True, read_only=True)
-    age = serializers.ReadOnlyField()
+    age = serializers.IntegerField(read_only=True, allow_null=True)
 
     class Meta:
         model = Person
@@ -109,16 +104,14 @@ class BodyImageSerializer(serializers.ModelSerializer):
         model = BodyImage
         fields = ["id", "image", "compressed", "thumbnail", "media_type", "file_name", "uploaded_at"]
 
-    def get_image(self, obj):
-        if obj.media_type == MediaType.IMAGE:
-            return f"data:{obj.mime_type};base64,{obj.image_data}"
-        return f"/api/media/{obj.id}/download/"
+    def get_image(self, obj) -> str:
+        return obj.file.url if obj.file else ""
 
-    def get_compressed(self, obj):
-        return f"data:image/jpeg;base64,{obj.compressed}" if obj.compressed else None
+    def get_compressed(self, obj) -> str:
+        return obj.compressed_file.url if obj.compressed_file else ""
 
-    def get_thumbnail(self, obj):
-        return f"data:image/jpeg;base64,{obj.thumbnail}" if obj.thumbnail else None
+    def get_thumbnail(self, obj) -> str:
+        return obj.thumbnail_file.url if obj.thumbnail_file else ""
 
 
 class BodySerializer(serializers.ModelSerializer):
@@ -164,7 +157,7 @@ class BodySerializer(serializers.ModelSerializer):
                 data[key] = ""
         return super().to_internal_value(data)
 
-    def get_notes(self, obj):
+    def get_notes(self, obj) -> str:
         return obj.specifications_notes
 
 
@@ -179,16 +172,14 @@ class CaseImageSerializer(serializers.ModelSerializer):
         model = CaseImage
         fields = ["id", "image", "compressed", "thumbnail", "media_type", "file_name", "uploaded_at"]
 
-    def get_image(self, obj):
-        if obj.media_type == MediaType.IMAGE:
-            return f"data:{obj.mime_type};base64,{obj.image_data}"
-        return f"/api/media/{obj.id}/download/"
+    def get_image(self, obj) -> str:
+        return obj.file.url if obj.file else ""
 
-    def get_compressed(self, obj):
-        return f"data:image/jpeg;base64,{obj.compressed}" if obj.compressed else None
+    def get_compressed(self, obj) -> str:
+        return obj.compressed_file.url if obj.compressed_file else ""
 
-    def get_thumbnail(self, obj):
-        return f"data:image/jpeg;base64,{obj.thumbnail}" if obj.thumbnail else None
+    def get_thumbnail(self, obj) -> str:
+        return obj.thumbnail_file.url if obj.thumbnail_file else ""
 
 
 # ================= Cases =================
@@ -272,3 +263,25 @@ class SyncRecordSerializer(serializers.ModelSerializer):
     class Meta:
         model = SyncRecord
         fields = ["local_id", "status", "case", "detail", "synced_at"]
+
+
+class SyncRequestSerializer(serializers.Serializer):
+    cases = serializers.ListField(child=serializers.DictField())
+
+
+class SyncResultSerializer(serializers.Serializer):
+    local_id = serializers.CharField(allow_null=True, required=False)
+    status = serializers.CharField()
+    detail = serializers.JSONField(required=False)
+    case_id = serializers.IntegerField(required=False)
+    case_code = serializers.CharField(required=False)
+    updated_at = serializers.DateTimeField(required=False)
+    server_updated_at = serializers.DateTimeField(required=False)
+
+
+class SyncResponseSerializer(serializers.Serializer):
+    results = SyncResultSerializer(many=True)
+
+
+class SyncErrorSerializer(serializers.Serializer):
+    detail = serializers.CharField()

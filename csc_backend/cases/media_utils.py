@@ -33,7 +33,7 @@ def validate_upload(file, media_type):
             raise serializers.ValidationError("الملف ليس صورة صالحة")
 
 
-def optimize_image(instance, file_field="file", thumb_field="thumbnail",
+def optimize_image(instance, file_field="file", thumb_field="thumbnail_file",
                    max_dim=1920, quality=80):
     field = getattr(instance, file_field)
     if not field:

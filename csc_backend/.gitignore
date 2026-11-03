@@ -7,3 +7,8 @@ venv/
 env/
 *.egg-info/
 .DS_Store
+# Logs
+logs/
+*.log
+schema.yaml
+schema_check.yaml

@@ -3,22 +3,25 @@ import os
 import zipfile
 from io import BytesIO
 
+from django.core.files.base import ContentFile
 from django.db.models import Count
-from django.http import HttpResponse
+from django.http import FileResponse, HttpResponse
 from django.shortcuts import get_object_or_404
 from django.utils import timezone
 from rest_framework import permissions, viewsets
 from rest_framework.decorators import action
-from rest_framework.parsers import FormParser, MultiPartParser
+from rest_framework.parsers import FormParser, MultiPartParser 
+# خلي بالك احنا همشنا كمان ال function import_case عشان نرجعها بعدين لو حبينا
 from rest_framework.response import Response
 from rest_framework.views import APIView
+from django.conf import settings
 
 from users.models import User
 from users.permissions import IsAdmin
 
 from .models import (
     Case, Evidence, EvidenceMedia, Person, PersonImage, SyncRecord,
-    b64_encode, b64_decode, make_image_versions,
+    make_image_versions,
     Body, BodyImage, CaseImage, MediaType,
 )
 from .serializers import (
@@ -36,6 +39,9 @@ from django.http import Http404
 
 def ensure_case_view(case, user):
     """مشاهدة/تحميل: الأدمن أي حاجة — الضابط قضاياه هو بس (أي حالة)."""
+    if not getattr(user, "is_authenticated", False):
+        raise Http404
+
     if user.role == User.Role.ADMIN:
         return
     if case.created_by_id == user.id:
@@ -70,6 +76,101 @@ def guess_media_type(name: str) -> str:
         return MediaType.DOCUMENT
     return MediaType.IMAGE
 
+# بديل  python-magic python-magic-bin -y
+def _detect_mime(header: bytes) -> str | None:
+    """
+    يفحص أول bytes من الملف ويحدد الـ MIME type.
+    بيرجع None لو مش معروف (عشان ما نرفضش ملفات مش متوقعينها).
+    """
+    if not header:
+        return None
+
+    # JPEG
+    if header[:3] == b'\xff\xd8\xff':
+        return "image/jpeg"
+
+    # PNG
+    if header[:8] == b'\x89PNG\r\n\x1a\n':
+        return "image/png"
+
+    # GIF
+    if header[:6] in (b'GIF87a', b'GIF89a'):
+        return "image/gif"
+
+    # WEBP (RIFF....WEBP)
+    if header[:4] == b'RIFF' and header[8:12] == b'WEBP':
+        return "image/webp"
+
+    # PDF
+    if header[:5] == b'%PDF-':
+        return "application/pdf"
+
+    # ZIP (docx, xlsx)
+    if header[:4] == b'PK\x03\x04':
+        return "application/zip"
+
+    # MP4 / QuickTime (ftyp box)
+    if header[4:8] == b'ftyp':
+        brand = header[8:12]
+        if brand in (b'MSNV', b'mp42', b'mp41', b'isom', b'iso2', b'avc1', b'M4V '):
+            return "video/mp4"
+        if brand in (b'qt  ',):
+            return "video/quicktime"
+        return "video/mp4"  # افتراضي للـ MP4 family
+
+    # AVI (RIFF....AVI )
+    if header[:4] == b'RIFF' and header[8:12] == b'AVI ':
+        return "video/x-msvideo"
+
+    # WAV (RIFF....WAVE)
+    if header[:4] == b'RIFF' and header[8:12] == b'WAVE':
+        return "audio/wav"
+
+    # MP3 (ID3 tag or frame sync)
+    if header[:3] == b'ID3':
+        return "audio/mpeg"
+    if header[0] == 0xFF and (header[1] & 0xE0) == 0xE0:
+        return "audio/mpeg"
+
+    # OGG
+    if header[:4] == b'OggS':
+        return "audio/ogg"
+
+    # WEBM (EBML header)
+    if header[:4] == b'\x1a\x45\xdf\xa3':
+        return "video/webm"
+
+    # DOC/XLS (OLE2 compound)
+    if header[:8] == b'\xd0\xcf\x11\xe0\xa1\xb1\x1a\xe1':
+        return "application/msword"
+
+    # EXE / DLL (PE header)
+    if header[:2] == b'MZ':
+        return "application/x-dosexec"
+
+    # مش معروف — نرجع None عشان ما نرفضش حاجة مش متوقعينها
+    return None
+
+
+def _media_file_fields(upload, raw: bytes, media_type: str):
+    compressed, thumbnail = make_image_versions(raw) if media_type == MediaType.IMAGE else (b"", b"")
+    base_name = os.path.splitext(os.path.basename(upload.name))[0]
+    return {
+        "file": ContentFile(raw, name=upload.name),
+        "compressed_file": (
+            ContentFile(compressed, name=f"{base_name}_compressed.jpg") if compressed else None
+        ),
+        "thumbnail_file": (
+            ContentFile(thumbnail, name=f"{base_name}_thumbnail.jpg") if thumbnail else None
+        ),
+    }
+
+
+def _write_media_to_zip(zip_file, path: str, media_file):
+    if media_file:
+        with media_file.open("rb") as source:
+            zip_file.writestr(path, source.read())
+
 
 # ===================== Mixin موحد للوسائط =====================
 
@@ -78,29 +179,61 @@ class MediaViewSetMixin:
     MAX_IMAGE = 25 * 1024 * 1024      # 25MB
     MAX_OTHER = 150 * 1024 * 1024     # 150MB
     form_field = "image"              # اسم حقل الـ FormData
-    data_column = "image_data"        # عمود الـ base64 في الموديل
 
     def read_media_upload(self, request):
-        """بيرجع (file, media_type, error_response)."""
+        """بيرجع (file, media_type, error_response) — مع فحص MIME حقيقي."""
         f = request.FILES.get(self.form_field)
         if not f:
             return None, None, Response({"detail": f"{self.form_field} مطلوب."}, status=400)
+
+        # 1) تحديد النوع من الاسم (fallback)
         mt = request.data.get("media_type") or guess_media_type(f.name)
         if mt not in ("image", "video", "audio", "document"):
             mt = "document"
+
+        # 2) فحص الحجم
         limit = self.MAX_IMAGE if mt == MediaType.IMAGE else self.MAX_OTHER
         if f.size > limit:
             return None, None, Response(
                 {"detail": f"حجم الملف كبير جدًا — الحد الأقصى {limit // (1024 * 1024)}MB."},
                 status=400,
             )
+
+        # 3) فحص MIME حقيقي من المحتوى (magic bytes)
+        file_header = f.read(2048)
+        f.seek(0)
+        detected_mime = _detect_mime(file_header)
+
+        ALLOWED_MIME = {
+            "image": ["image/jpeg", "image/png", "image/gif", "image/webp"],
+            "video": ["video/mp4", "video/quicktime", "video/x-msvideo", "video/webm"],
+            "audio": ["audio/mpeg", "audio/wav", "audio/mp4", "audio/ogg"],
+            "document": [
+                "application/pdf",
+                "application/msword",
+                "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+                "text/plain",
+            ],
+        }
+
+        allowed = ALLOWED_MIME.get(mt, [])
+        if detected_mime not in allowed:
+            return None, None, Response(
+                {"detail": f"نوع الملف غير مسموح. النوع المكتشف: {detected_mime or 'غير معروف'}"},
+                status=400,
+            )
+
         return f, mt, None
 
     @action(detail=True, methods=["get"], url_path="download")
     def download_file(self, request, pk=None):
         obj = self.get_object()
-        raw = b64_decode(getattr(obj, self.data_column))
-        res = HttpResponse(raw, content_type=obj.mime_type or "application/octet-stream")
+        if not obj.file:
+            return Response({"detail": "الملف غير موجود."}, status=404)
+        res = FileResponse(
+            obj.file.open("rb"),
+            content_type=obj.mime_type or "application/octet-stream",
+        )
         res["Content-Disposition"] = f'inline; filename="{obj.file_name or str(obj.id)}"'
         res["Cache-Control"] = "private, max-age=86400"
         return res
@@ -117,8 +250,14 @@ class CaseViewSet(viewsets.ModelViewSet):
 
     def get_queryset(self):
         user = self.request.user
+        
+        # لو مش مسجل دخول، ما نرجّعش أي بيانات
+        if not user.is_authenticated:
+            return Case.objects.none()
+
         if user.role == User.Role.SUPPORT:
             return Case.objects.none()
+            
         qs = Case.objects.select_related("created_by").annotate(
             persons_count=Count("persons", distinct=True),
             evidences_count=Count("evidences", distinct=True),
@@ -139,10 +278,7 @@ class CaseViewSet(viewsets.ModelViewSet):
         if station and station != "All Stations":
             qs = qs.filter(created_by__username=station)
         return qs.order_by("-created_at")
-        updated_after = self.request.query_params.get("updated_after")
-        if updated_after:
-            qs = qs.filter(updated_at__gte=updated_after)
-
+        
     def get_serializer_class(self):
         return CaseDetailSerializer if self.action == "retrieve" else CaseSerializer
 
@@ -155,6 +291,9 @@ class CaseViewSet(viewsets.ModelViewSet):
         return obj
 
     def get_permissions(self):
+        # لو المستخدم مش مسجل دخول، نخلي DRF يرفض بـ 401 بشكل طبيعي
+        if not self.request.user.is_authenticated:
+            return [permissions.IsAuthenticated()]
         if self.action == "destroy":
             return [IsAdmin()]
         if self.request.user.role == User.Role.SUPPORT:
@@ -188,10 +327,39 @@ class CaseViewSet(viewsets.ModelViewSet):
         from reportlab.lib.styles import getSampleStyleSheet, ParagraphStyle
 
         # ===== تسجيل خط بيدعم العربي (مرة واحدة) =====
+        # ✅ تحديد مسار الخط بشكل ذكي (ويندوز + لينكس)
+    
+
+        def get_arabic_font_path():
+            """
+            SEC-008: يدور على الخط العربي في أكتر من مكان，
+            عشان يشتغل على ويندوز (جهازك) وعلى لينكس (السيرفر).
+            """
+            candidates = [
+                # 1) الخط المضمون في المشروع (الأفضل)
+                os.path.join(settings.BASE_DIR, 'static', 'fonts', 'tahoma.ttf'),
+                os.path.join(settings.BASE_DIR, 'static', 'fonts', 'Amiri-Regular.ttf'),
+                
+               
+                
+                # 3) خطوط لينكس الشائعة (للإنتاج)
+                '/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf',
+                '/usr/share/fonts/truetype/noto/NotoNaskhArabic-Regular.ttf',
+                '/usr/share/fonts/truetype/freefont/FreeSans.ttf',
+            ]
+            for path in candidates:
+                if os.path.exists(path):
+                    return path
+            raise RuntimeError(
+                "❌ مش لاقي خط عربي. "
+                "انسخ tahoma.ttf لـ csc_backend/static/fonts/"
+            )
+
+        # ✅ تسجيل الخط مرة واحدة بس
         try:
             pdfmetrics.getFont("ArabicFont")
         except KeyError:
-            pdfmetrics.registerFont(TTFont("ArabicFont", "C:/Windows/Fonts/tahoma.ttf"))
+            pdfmetrics.registerFont(TTFont("ArabicFont", get_arabic_font_path()))
 
         def ar(text):
             """بيصلح العربي (تشكيل + اتجاه) وسيب الإنجليزي زي ما هو."""
@@ -463,12 +631,14 @@ class CaseViewSet(viewsets.ModelViewSet):
             )
 
             for person in persons:
-                safe_name = (person.full_name or "unknown").replace("/", "_").replace("\\", "_")
+                safe_name = re.sub(r'[^\w\s-]', '_', person.full_name or "unknown").strip()
+                safe_name = re.sub(r'[-\s]+', '_', safe_name)
                 for img in person.images.all():
                     name = img.file_name or f"{person.code}.jpg"
-                    zipf.writestr(
+                    _write_media_to_zip(
+                        zipf,
                         f"Images/{person.role.capitalize()}s/{safe_name}/{img.id}_{name}",
-                        b64_decode(img.image_data),
+                        img.file,
                     )
 
             for idx, ev in enumerate(evidences, start=1):
@@ -476,280 +646,283 @@ class CaseViewSet(viewsets.ModelViewSet):
                 folder_name = f"{idx:02d}_{ev.evidence_code}"
                 for m in ev.media.all():
                     name = m.file_name or f"{ev.evidence_code}.bin"
-                    zipf.writestr(
+                    _write_media_to_zip(
+                        zipf,
                         f"Images/Evidence/{folder_name}/{m.id}_{name}",
-                        b64_decode(m.file_data),
+                        m.file,
                     )
 
             for cim in case_images:
                 name = cim.file_name or f"case_{case.case_code}.jpg"
-                zipf.writestr(
+                _write_media_to_zip(
+                    zipf,
                     f"Images/CaseImages/{case.case_code}/{cim.id}_{name}",
-                    b64_decode(cim.image_data),
+                    cim.file,
                 )
 
             for b in bodies:
                 for bim in b.images.all():
                     name = bim.file_name or f"{b.code}.jpg"
-                    zipf.writestr(
+                    _write_media_to_zip(
+                        zipf,
                         f"Images/Bodies/{b.code}/{bim.id}_{name}",
-                        b64_decode(bim.image_data),
+                        bim.file,
                     )
 
         buffer.seek(0)
         res = HttpResponse(buffer.read(), content_type="application/zip")
         res["Content-Disposition"] = f'attachment; filename="{case.case_number or case.case_code}.zip"'
         return res
-    @action(detail=False, methods=["post"], url_path="import", parser_classes=[MultiPartParser, FormParser])
-    def import_case(self, request):
-        """POST /api/cases/import/ — استيراد قضية من JSON أو ZIP كامل (بالصور والفيديو)."""
-        import zipfile as zf_module
+    # @action(detail=False, methods=["post"], url_path="import", parser_classes=[MultiPartParser, FormParser])
+    # def import_case(self, request):
+    #     """POST /api/cases/import/ — استيراد قضية من JSON أو ZIP كامل (بالصور والفيديو)."""
+    #     import zipfile as zf_module
 
-        f = request.FILES.get("file")
-        if not f:
-            return Response({"detail": "ملف مطلوب."}, status=400)
+    #     f = request.FILES.get("file")
+    #     if not f:
+    #         return Response({"detail": "ملف مطلوب."}, status=400)
 
-        fname = f.name.lower()
-        zip_images = {}
+    #     fname = f.name.lower()
+    #     zip_images = {}
 
-        # ===== 1) قراءة البيانات =====
-        if fname.endswith(".json"):
-            try:
-                data = json.loads(f.read().decode("utf-8"))
-            except Exception as e:
-                return Response({"detail": f"ملف JSON غير صالح: {e}"}, status=400)
+    #     # ===== 1) قراءة البيانات =====
+    #     if fname.endswith(".json"):
+    #         try:
+    #             data = json.loads(f.read().decode("utf-8"))
+    #         except Exception as e:
+    #             return Response({"detail": f"ملف JSON غير صالح: {e}"}, status=400)
 
-        elif fname.endswith(".zip"):
-            try:
-                z = zf_module.ZipFile(f)
-            except Exception as e:
-                return Response({"detail": f"ملف ZIP غير صالح: {e}"}, status=400)
+    #     elif fname.endswith(".zip"):
+    #         try:
+    #             z = zf_module.ZipFile(f)
+    #         except Exception as e:
+    #             return Response({"detail": f"ملف ZIP غير صالح: {e}"}, status=400)
 
-            json_path = None
-            for name in z.namelist():
-                if name.lower().endswith("case.json"):
-                    json_path = name
-                    break
-            if not json_path:
-                return Response({"detail": "ملف case.json مش موجود جوه الـ ZIP."}, status=400)
+    #         json_path = None
+    #         for name in z.namelist():
+    #             if name.lower().endswith("case.json"):
+    #                 json_path = name
+    #                 break
+    #         if not json_path:
+    #             return Response({"detail": "ملف case.json مش موجود جوه الـ ZIP."}, status=400)
 
-            try:
-                data = json.loads(z.read(json_path).decode("utf-8"))
-            except Exception as e:
-                return Response({"detail": f"الـ JSON جوه الـ ZIP غير صالح: {e}"}, status=400)
+    #         try:
+    #             data = json.loads(z.read(json_path).decode("utf-8"))
+    #         except Exception as e:
+    #             return Response({"detail": f"الـ JSON جوه الـ ZIP غير صالح: {e}"}, status=400)
 
-            for name in z.namelist():
-                if name.startswith("Images/") and not name.endswith("/"):
-                    try:
-                        zip_images[name] = z.read(name)
-                    except Exception:
-                        continue
-        else:
-            return Response({"detail": "من فضلك اختار ملف JSON أو ZIP."}, status=400)
+    #         for name in z.namelist():
+    #             if name.startswith("Images/") and not name.endswith("/"):
+    #                 try:
+    #                     zip_images[name] = z.read(name)
+    #                 except Exception:
+    #                     continue
+    #     else:
+    #         return Response({"detail": "من فضلك اختار ملف JSON أو ZIP."}, status=400)
 
-        # ===== 2) إنشاء القضية (كل الأنواع) =====
-        case_number = data.get("case_number") or data.get("caseId")
-        if not case_number:
-            return Response({"detail": "حقل case_number مطلوب في الملف."}, status=400)
+    #     # ===== 2) إنشاء القضية (كل الأنواع) =====
+    #     case_number = data.get("case_number") or data.get("caseId")
+    #     if not case_number:
+    #         return Response({"detail": "حقل case_number مطلوب في الملف."}, status=400)
 
-        try:
-            case = Case.objects.create(
-                case_number=case_number,
-                case_year=data.get("case_year") or None,
-                case_type=data.get("case_type", "criminal"),
-                incident_type=data.get("incident_type", ""),
-                description=data.get("description", ""),
-                inspection_date=data.get("inspection_date") or None,
-                governorate=data.get("governorate", ""),
-                police_department=data.get("police_department", ""),
-                investigator=data.get("investigator", ""),
-                location_name=data.get("location_name", ""),
-                address=data.get("address", ""),
-                location_governorate=data.get("location_governorate", ""),
-                city=data.get("city", ""),
-                district=data.get("district", ""),
-                street=data.get("street", ""),
-                date_of_receipt=data.get("date_of_receipt") or None,
-                receipt_authority=data.get("receipt_authority", ""),
-                date_of_transfer=data.get("date_of_transfer") or None,
-                transferred_authority=data.get("transferred_authority", ""),
-                fingerprint_type=data.get("fingerprint_type", ""),
-                fingerprint_holder=data.get("fingerprint_holder", ""),
-                comparison_document=data.get("comparison_document", ""),
-                type_of_comparison_document=data.get("type_of_comparison_document", ""),
-                expert=data.get("expert", ""),
-                photographer=data.get("photographer", ""),
-                notes=data.get("notes", ""),
-                report_number=data.get("report_number", ""),
-                date_of_discovery=data.get("date_of_discovery") or None,
-                location_of_body_presence=data.get("location_of_body_presence", ""),
-                finding_location=data.get("finding_location", ""),
-                photography_expert=data.get("photography_expert", ""),
-                fingerprint_expert=data.get("fingerprint_expert", ""),
-                created_by=request.user,
-                status=Case.Status.SUBMITTED,
-                submitted_at=timezone.now(),
-            )
-        except Exception as e:
-            return Response({"detail": f"فشل إنشاء القضية: {e}"}, status=400)
+    #     try:
+    #         case = Case.objects.create(
+    #             case_number=case_number,
+    #             case_year=data.get("case_year") or None,
+    #             case_type=data.get("case_type", "criminal"),
+    #             incident_type=data.get("incident_type", ""),
+    #             description=data.get("description", ""),
+    #             inspection_date=data.get("inspection_date") or None,
+    #             governorate=data.get("governorate", ""),
+    #             police_department=data.get("police_department", ""),
+    #             investigator=data.get("investigator", ""),
+    #             location_name=data.get("location_name", ""),
+    #             address=data.get("address", ""),
+    #             location_governorate=data.get("location_governorate", ""),
+    #             city=data.get("city", ""),
+    #             district=data.get("district", ""),
+    #             street=data.get("street", ""),
+    #             date_of_receipt=data.get("date_of_receipt") or None,
+    #             receipt_authority=data.get("receipt_authority", ""),
+    #             date_of_transfer=data.get("date_of_transfer") or None,
+    #             transferred_authority=data.get("transferred_authority", ""),
+    #             fingerprint_type=data.get("fingerprint_type", ""),
+    #             fingerprint_holder=data.get("fingerprint_holder", ""),
+    #             comparison_document=data.get("comparison_document", ""),
+    #             type_of_comparison_document=data.get("type_of_comparison_document", ""),
+    #             expert=data.get("expert", ""),
+    #             photographer=data.get("photographer", ""),
+    #             notes=data.get("notes", ""),
+    #             report_number=data.get("report_number", ""),
+    #             date_of_discovery=data.get("date_of_discovery") or None,
+    #             location_of_body_presence=data.get("location_of_body_presence", ""),
+    #             finding_location=data.get("finding_location", ""),
+    #             photography_expert=data.get("photography_expert", ""),
+    #             fingerprint_expert=data.get("fingerprint_expert", ""),
+    #             created_by=request.user,
+    #             status=Case.Status.SUBMITTED,
+    #             submitted_at=timezone.now(),
+    #         )
+    #     except Exception as e:
+    #         return Response({"detail": f"فشل إنشاء القضية: {e}"}, status=400)
 
-        # ===== 3) Mapping للأشخاص =====
-        person_mapping = {}
-        role_map = {"victims": "victim", "suspects": "suspect", "reporters": "reporter"}
+    #     # ===== 3) Mapping للأشخاص =====
+    #     person_mapping = {}
+    #     role_map = {"victims": "victim", "suspects": "suspect", "reporters": "reporter"}
 
-        for p in (data.get("persons") or []):
-            try:
-                old_code = p.get("code")
-                full_name = p.get("full_name", "") or p.get("fullName", "") or "Unknown"
-                person = Person.objects.create(
-                    case=case,
-                    role=p.get("role", "victim"),
-                    full_name=full_name,
-                    national_id=p.get("national_id", "") or p.get("nationalId", ""),
-                    gender=p.get("gender", ""),
-                    nationality=p.get("nationality", ""),
-                    person_notes=p.get("person_notes", "") or p.get("note", ""),
-                )
-                if old_code:
-                    person_mapping[old_code] = person
-                if full_name:
-                    person_mapping[full_name] = person
-            except Exception as e:
-                print(f"⚠️ فشل إضافة شخص: {e}")
+    #     for p in (data.get("persons") or []):
+    #         try:
+    #             old_code = p.get("code")
+    #             full_name = p.get("full_name", "") or p.get("fullName", "") or "Unknown"
+    #             person = Person.objects.create(
+    #                 case=case,
+    #                 role=p.get("role", "victim"),
+    #                 full_name=full_name,
+    #                 national_id=p.get("national_id", "") or p.get("nationalId", ""),
+    #                 gender=p.get("gender", ""),
+    #                 nationality=p.get("nationality", ""),
+    #                 person_notes=p.get("person_notes", "") or p.get("note", ""),
+    #             )
+    #             if old_code:
+    #                 person_mapping[old_code] = person
+    #             if full_name:
+    #                 person_mapping[full_name] = person
+    #         except Exception as e:
+    #             print(f"⚠️ فشل إضافة شخص: {e}")
 
-        # ===== 4) Mapping للأدلة =====
-        evidence_mapping = {}
-        for e in (data.get("evidences") or data.get("evidence") or []):
-            try:
-                old_code = e.get("evidence_code")
-                evidence_number = e.get("evidence_number", "") or e.get("evidenceId", "")
-                evidence = Evidence.objects.create(
-                    case=case,
-                    evidence_number=evidence_number,
-                    evidence_type=e.get("evidence_type", "") or e.get("evidenceType", ""),
-                    description=e.get("description", ""),
-                    collector=request.user,
-                )
-                if old_code:
-                    evidence_mapping[old_code] = evidence
-                if evidence_number:
-                    evidence_mapping[evidence_number] = evidence
-            except Exception as e:
-                print(f"⚠️ فشل إضافة دليل: {e}")
+    #     # ===== 4) Mapping للأدلة =====
+    #     evidence_mapping = {}
+    #     for e in (data.get("evidences") or data.get("evidence") or []):
+    #         try:
+    #             old_code = e.get("evidence_code")
+    #             evidence_number = e.get("evidence_number", "") or e.get("evidenceId", "")
+    #             evidence = Evidence.objects.create(
+    #                 case=case,
+    #                 evidence_number=evidence_number,
+    #                 evidence_type=e.get("evidence_type", "") or e.get("evidenceType", ""),
+    #                 description=e.get("description", ""),
+    #                 collector=request.user,
+    #             )
+    #             if old_code:
+    #                 evidence_mapping[old_code] = evidence
+    #             if evidence_number:
+    #                 evidence_mapping[evidence_number] = evidence
+    #         except Exception as e:
+    #             print(f"⚠️ فشل إضافة دليل: {e}")
 
-        # ===== 5) ✅ Mapping للجثث =====
-        body_mapping = {}
-        for b in (data.get("bodies") or []):
-            try:
-                old_code = b.get("code")
-                body = Body.objects.create(
-                    case=case,
-                    gender=b.get("gender", ""),
-                    approximate_age=b.get("approximate_age", ""),
-                    approximate_height=b.get("approximate_height", ""),
-                    weight=b.get("weight", ""),
-                    discovery_circumstances=b.get("discovery_circumstances", ""),
-                    distinguishing_marks=b.get("distinguishing_marks", ""),
-                    underwear=b.get("underwear", ""),
-                    outerwear=b.get("outerwear", ""),
-                    facial_features=b.get("facial_features", ""),
-                    facial_features_reason=b.get("facial_features_reason", ""),
-                    hand_fingerprints=b.get("hand_fingerprints", ""),
-                    hand_fingerprints_reason=b.get("hand_fingerprints_reason", ""),
-                    biological_sample=b.get("biological_sample") or [],
-                    specifications_notes=b.get("specifications_notes", "") or b.get("notes", ""),
-                )
-                if old_code:
-                    body_mapping[old_code] = body
-            except Exception as e:
-                print(f"⚠️ فشل إضافة جثة: {e}")
+    #     # ===== 5) ✅ Mapping للجثث =====
+    #     body_mapping = {}
+    #     for b in (data.get("bodies") or []):
+    #         try:
+    #             old_code = b.get("code")
+    #             body = Body.objects.create(
+    #                 case=case,
+    #                 gender=b.get("gender", ""),
+    #                 approximate_age=b.get("approximate_age", ""),
+    #                 approximate_height=b.get("approximate_height", ""),
+    #                 weight=b.get("weight", ""),
+    #                 discovery_circumstances=b.get("discovery_circumstances", ""),
+    #                 distinguishing_marks=b.get("distinguishing_marks", ""),
+    #                 underwear=b.get("underwear", ""),
+    #                 outerwear=b.get("outerwear", ""),
+    #                 facial_features=b.get("facial_features", ""),
+    #                 facial_features_reason=b.get("facial_features_reason", ""),
+    #                 hand_fingerprints=b.get("hand_fingerprints", ""),
+    #                 hand_fingerprints_reason=b.get("hand_fingerprints_reason", ""),
+    #                 biological_sample=b.get("biological_sample") or [],
+    #                 specifications_notes=b.get("specifications_notes", "") or b.get("notes", ""),
+    #             )
+    #             if old_code:
+    #                 body_mapping[old_code] = body
+    #         except Exception as e:
+    #             print(f"⚠️ فشل إضافة جثة: {e}")
 
-        # ===== 6) ربط الوسائط (صور + فيديو + مستندات) =====
-        imported_images = 0
-        for path, raw in zip_images.items():
-            parts = path.split("/")
-            if len(parts) < 4:
-                continue
-            category = parts[1].lower()
-            folder = parts[2]
-            file_name = parts[-1]
+    #     # ===== 6) ربط الوسائط (صور + فيديو + مستندات) =====
+    #     imported_images = 0
+    #     for path, raw in zip_images.items():
+    #         parts = path.split("/")
+    #         if len(parts) < 4:
+    #             continue
+    #         category = parts[1].lower()
+    #         folder = parts[2]
+    #         file_name = parts[-1]
 
-            if not raw:
-                continue
+    #         if not raw:
+    #             continue
 
-            mtype = guess_media_type(file_name)
-            mime = "image/jpeg" if mtype == MediaType.IMAGE else "application/octet-stream"
-            compressed_b64, thumb_b64 = make_image_versions(raw) if mtype == MediaType.IMAGE else ("", "")
+    #         mtype = guess_media_type(file_name)
+    #         mime = "image/jpeg" if mtype == MediaType.IMAGE else "application/octet-stream"
+    #         compressed, thumbnail = make_image_versions(raw) if mtype == MediaType.IMAGE else (b"", b"")
 
-            if category == "evidence":
-                ev = evidence_mapping.get(folder)
-                if ev:
-                    EvidenceMedia.objects.create(
-                        evidence=ev,
-                        file_name=file_name,
-                        mime_type=mime,
-                        file_data=b64_encode(raw),
-                        compressed=compressed_b64,
-                        thumbnail=thumb_b64,
-                        media_type=mtype,
-                    )
-                    imported_images += 1
-                else:
-                    print(f"⚠️ وسيط دليل مش مربوط: {path}")
+    #         if category == "evidence":
+    #             ev = evidence_mapping.get(folder)
+    #             if ev:
+    #                 EvidenceMedia.objects.create(
+    #                     evidence=ev,
+    #                     file_name=file_name,
+    #                     mime_type=mime,
+    #                     file=ContentFile(raw, name=file_name),
+    #                     compressed_file=ContentFile(compressed, name=f"{file_name}.compressed.jpg") if compressed else None,
+    #                     thumbnail_file=ContentFile(thumbnail, name=f"{file_name}.thumbnail.jpg") if thumbnail else None,
+    #                     media_type=mtype,
+    #                 )
+    #                 imported_images += 1
+    #             else:
+    #                 print(f"⚠️ وسيط دليل مش مربوط: {path}")
 
-            elif category == "caseimages":
-                CaseImage.objects.create(
-                    case=case,
-                    file_name=file_name,
-                    mime_type=mime,
-                    image_data=b64_encode(raw),
-                    compressed=compressed_b64,
-                    thumbnail=thumb_b64,
-                    media_type=mtype,
-                )
-                imported_images += 1
+    #         elif category == "caseimages":
+    #             CaseImage.objects.create(
+    #                 case=case,
+    #                 file_name=file_name,
+    #                 mime_type=mime,
+    #                 file=ContentFile(raw, name=file_name),
+    #                 compressed_file=ContentFile(compressed, name=f"{file_name}.compressed.jpg") if compressed else None,
+    #                 thumbnail_file=ContentFile(thumbnail, name=f"{file_name}.thumbnail.jpg") if thumbnail else None,
+    #                 media_type=mtype,
+    #             )
+    #             imported_images += 1
 
-            elif category == "bodies":
-                body = body_mapping.get(folder)
-                if body:
-                    BodyImage.objects.create(
-                        body=body,
-                        file_name=file_name,
-                        mime_type=mime,
-                        image_data=b64_encode(raw),
-                        compressed=compressed_b64,
-                        thumbnail=thumb_b64,
-                        media_type=mtype,
-                    )
-                    imported_images += 1
-                else:
-                    print(f"⚠️ وسيط جثة مش مربوط: {path}")
+    #         elif category == "bodies":
+    #             body = body_mapping.get(folder)
+    #             if body:
+    #                 BodyImage.objects.create(
+    #                     body=body,
+    #                     file_name=file_name,
+    #                     mime_type=mime,
+    #                     file=ContentFile(raw, name=file_name),
+    #                     compressed_file=ContentFile(compressed, name=f"{file_name}.compressed.jpg") if compressed else None,
+    #                     thumbnail_file=ContentFile(thumbnail, name=f"{file_name}.thumbnail.jpg") if thumbnail else None,
+    #                     media_type=mtype,
+    #                 )
+    #                 imported_images += 1
+    #             else:
+    #                 print(f"⚠️ وسيط جثة مش مربوط: {path}")
 
-            elif category in role_map:
-                person = person_mapping.get(folder)
-                if person:
-                    PersonImage.objects.create(
-                        person=person,
-                        file_name=file_name,
-                        mime_type=mime,
-                        image_data=b64_encode(raw),
-                        compressed=compressed_b64,
-                        thumbnail=thumb_b64,
-                        media_type=mtype,
-                    )
-                    imported_images += 1
-                else:
-                    print(f"⚠️ وسيط شخص مش مربوط: {path}")
+    #         elif category in role_map:
+    #             person = person_mapping.get(folder)
+    #             if person:
+    #                 PersonImage.objects.create(
+    #                     person=person,
+    #                     file_name=file_name,
+    #                     mime_type=mime,
+    #                     file=ContentFile(raw, name=file_name),
+    #                     compressed_file=ContentFile(compressed, name=f"{file_name}.compressed.jpg") if compressed else None,
+    #                     thumbnail_file=ContentFile(thumbnail, name=f"{file_name}.thumbnail.jpg") if thumbnail else None,
+    #                     media_type=mtype,
+    #                 )
+    #                 imported_images += 1
+    #             else:
+    #                 print(f"⚠️ وسيط شخص مش مربوط: {path}")
 
-        return Response({
-            "id": case.id,
-            "case_code": case.case_code,
-            "case_number": case.case_number,
-            "persons_count": case.persons.count(),
-            "evidences_count": case.evidences.count(),
-            "bodies_count": case.bodies.count(),
-            "images_count": imported_images,
-        }, status=201)
+    #     return Response({
+    #         "id": case.id,
+    #         "case_code": case.case_code,
+    #         "case_number": case.case_number,
+    #         "persons_count": case.persons.count(),
+    #         "evidences_count": case.evidences.count(),
+    #         "bodies_count": case.bodies.count(),
+    #         "images_count": imported_images,
+    #     }, status=201)
 
 
 # ===================== PersonViewSet =====================
@@ -807,14 +980,11 @@ class PersonImageViewSet(MediaViewSetMixin, viewsets.ModelViewSet):
         if err:
             return err
         raw = f.read()
-        compressed_b64, thumb_b64 = make_image_versions(raw) if mt == MediaType.IMAGE else ("", "")
         obj = PersonImage.objects.create(
             person=person,
             file_name=f.name,
             mime_type=f.content_type or "application/octet-stream",
-            image_data=b64_encode(raw),
-            compressed=compressed_b64,
-            thumbnail=thumb_b64,
+            **_media_file_fields(f, raw, mt),
             media_type=mt,
         )
         return Response(PersonImageSerializer(obj).data, status=201)
@@ -876,7 +1046,6 @@ class EvidenceMediaViewSet(MediaViewSetMixin, viewsets.ModelViewSet):
     permission_classes = [permissions.IsAuthenticated]
     parser_classes = [MultiPartParser, FormParser]
     form_field = "file"        # ✅ الأدلة بترفع بحقل اسم file
-    data_column = "file_data"
 
     def create(self, request, *args, **kwargs):
         evidence = self.get_evidence()
@@ -884,14 +1053,11 @@ class EvidenceMediaViewSet(MediaViewSetMixin, viewsets.ModelViewSet):
         if err:
             return err
         raw = f.read()
-        compressed_b64, thumb_b64 = make_image_versions(raw) if mt == MediaType.IMAGE else ("", "")
         obj = EvidenceMedia.objects.create(
             evidence=evidence,
             file_name=f.name,
             mime_type=f.content_type or "application/octet-stream",
-            file_data=b64_encode(raw),
-            compressed=compressed_b64,
-            thumbnail=thumb_b64,
+            **_media_file_fields(f, raw, mt),
             media_type=mt,
         )
         return Response(EvidenceMediaSerializer(obj).data, status=201)
@@ -981,14 +1147,11 @@ class BodyImageViewSet(MediaViewSetMixin, viewsets.ModelViewSet):
         if err:
             return err
         raw = f.read()
-        compressed_b64, thumb_b64 = make_image_versions(raw) if mt == MediaType.IMAGE else ("", "")
         obj = BodyImage.objects.create(
             body=body,
             file_name=f.name,
             mime_type=f.content_type or "application/octet-stream",
-            image_data=b64_encode(raw),
-            compressed=compressed_b64,
-            thumbnail=thumb_b64,
+            **_media_file_fields(f, raw, mt),
             media_type=mt,
         )
         return Response(BodyImageSerializer(obj).data, status=201)
@@ -1022,14 +1185,11 @@ class CaseImageViewSet(MediaViewSetMixin, viewsets.ModelViewSet):
         if err:
             return err
         raw = f.read()
-        compressed_b64, thumb_b64 = make_image_versions(raw) if mt == MediaType.IMAGE else ("", "")
         obj = CaseImage.objects.create(
             case=case,
             file_name=f.name,
             mime_type=f.content_type or "application/octet-stream",
-            image_data=b64_encode(raw),
-            compressed=compressed_b64,
-            thumbnail=thumb_b64,
+            **_media_file_fields(f, raw, mt),
             media_type=mt,
         )
         return Response(CaseImageSerializer(obj).data, status=201)
