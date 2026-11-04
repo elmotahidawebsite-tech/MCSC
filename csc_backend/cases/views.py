@@ -171,17 +171,41 @@ def _write_media_to_zip(zip_file, path: str, media_file):
         with media_file.open("rb") as source:
             zip_file.writestr(path, source.read())
 
+def _get_case_total_size(case):
+    """
+    بيحسب الحجم الكلي لكل الوسائط المرفوعة على القضية (بالبايت).
+    بيغطي: صور القضية + صور الأشخاص + وسائط الأدلة + صور الجثث.
+    """
+    total = 0
+    for img in case.images.all():
+        if img.file:
+            total += img.file.size
+    for person in case.persons.prefetch_related("images").all():
+        for img in person.images.all():
+            if img.file:
+                total += img.file.size
+    for ev in case.evidences.prefetch_related("media").all():
+        for m in ev.media.all():
+            if m.file:
+                total += m.file.size
+    for b in case.bodies.prefetch_related("images").all():
+        for img in b.images.all():
+            if img.file:
+                total += img.file.size
+    return total
+
 
 # ===================== Mixin موحد للوسائط =====================
 
 class MediaViewSetMixin:
     """حد حجم + نوع وسيط + أكشن تحميل — لكل موديلات الصور/الفيديو."""
-    MAX_IMAGE = 25 * 1024 * 1024      # 25MB
-    MAX_OTHER = 150 * 1024 * 1024     # 150MB
-    form_field = "image"              # اسم حقل الـ FormData
+    MAX_IMAGE = 25 * 1024 * 1024      # 25MB لكل صورة
+    MAX_OTHER = 150 * 1024 * 1024     # 150MB لكل ملف
+    MAX_CASE_TOTAL = 200 * 1024 * 1024  # ✅ 200MB إجمالي لكل قضية
+    form_field = "image"
 
-    def read_media_upload(self, request):
-        """بيرجع (file, media_type, error_response) — مع فحص MIME حقيقي."""
+    def read_media_upload(self, request, case):
+        """بيرجع (file, media_type, error_response) — مع فحص MIME + الحجم الكلي."""
         f = request.FILES.get(self.form_field)
         if not f:
             return None, None, Response({"detail": f"{self.form_field} مطلوب."}, status=400)
@@ -191,7 +215,7 @@ class MediaViewSetMixin:
         if mt not in ("image", "video", "audio", "document"):
             mt = "document"
 
-        # 2) فحص الحجم
+        # 2) فحص الحجم الفردي
         limit = self.MAX_IMAGE if mt == MediaType.IMAGE else self.MAX_OTHER
         if f.size > limit:
             return None, None, Response(
@@ -223,8 +247,17 @@ class MediaViewSetMixin:
                 status=400,
             )
 
-        return f, mt, None
+        # ✅ 4) فحص الحجم الكلي للقضية
+        current_total = _get_case_total_size(case)
+        if current_total + f.size > self.MAX_CASE_TOTAL:
+            remaining = max(0, self.MAX_CASE_TOTAL - current_total)
+            return None, None, Response(
+                {"detail": f"القضية تخطت الحد المسموح لحجم الملفات ({self.MAX_CASE_TOTAL // (1024 * 1024)}MB). "
+                           f"المتبقي: {remaining // (1024 * 1024)}MB."},
+                status=400,
+            )
 
+        return f, mt, None
     @action(detail=True, methods=["get"], url_path="download")
     def download_file(self, request, pk=None):
         obj = self.get_object()
@@ -976,7 +1009,7 @@ class PersonImageViewSet(MediaViewSetMixin, viewsets.ModelViewSet):
 
     def create(self, request, *args, **kwargs):
         person = self.get_person()
-        f, mt, err = self.read_media_upload(request)
+        f, mt, err = self.read_media_upload(request, person.case)  # ← person.case
         if err:
             return err
         raw = f.read()
@@ -988,7 +1021,6 @@ class PersonImageViewSet(MediaViewSetMixin, viewsets.ModelViewSet):
             media_type=mt,
         )
         return Response(PersonImageSerializer(obj).data, status=201)
-
     def get_person(self):
         person = get_object_or_404(Person, pk=self.kwargs["person_id"])
         if self.request.method in permissions.SAFE_METHODS:
@@ -1049,7 +1081,7 @@ class EvidenceMediaViewSet(MediaViewSetMixin, viewsets.ModelViewSet):
 
     def create(self, request, *args, **kwargs):
         evidence = self.get_evidence()
-        f, mt, err = self.read_media_upload(request)
+        f, mt, err = self.read_media_upload(request, evidence.case)  # ← evidence.case
         if err:
             return err
         raw = f.read()
@@ -1061,7 +1093,7 @@ class EvidenceMediaViewSet(MediaViewSetMixin, viewsets.ModelViewSet):
             media_type=mt,
         )
         return Response(EvidenceMediaSerializer(obj).data, status=201)
-
+    
     def get_evidence(self):
         evidence = get_object_or_404(Evidence, pk=self.kwargs["evidence_id"])
         if self.request.method in permissions.SAFE_METHODS:
@@ -1143,7 +1175,7 @@ class BodyImageViewSet(MediaViewSetMixin, viewsets.ModelViewSet):
 
     def create(self, request, *args, **kwargs):
         body = self.get_body()
-        f, mt, err = self.read_media_upload(request)
+        f, mt, err = self.read_media_upload(request, body.case)  # ← body.case
         if err:
             return err
         raw = f.read()
@@ -1155,7 +1187,7 @@ class BodyImageViewSet(MediaViewSetMixin, viewsets.ModelViewSet):
             media_type=mt,
         )
         return Response(BodyImageSerializer(obj).data, status=201)
-
+    
     def get_body(self):
         body = get_object_or_404(Body, pk=self.kwargs["body_id"])
         if self.request.method in permissions.SAFE_METHODS:
@@ -1179,9 +1211,10 @@ class CaseImageViewSet(MediaViewSetMixin, viewsets.ModelViewSet):
     parser_classes = [MultiPartParser, FormParser]
     http_method_names = ["get", "post", "delete", "head", "options"]
 
+
     def create(self, request, *args, **kwargs):
         case = self.get_case()
-        f, mt, err = self.read_media_upload(request)
+        f, mt, err = self.read_media_upload(request, case)  # ← case مباشرة
         if err:
             return err
         raw = f.read()
