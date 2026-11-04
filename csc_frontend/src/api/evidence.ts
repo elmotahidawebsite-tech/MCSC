@@ -14,12 +14,21 @@ export async function createEvidence(
   return data;
 }
 
-export async function uploadEvidenceMedia(evidenceId: number, file: File, fileType: string) {
+
+export async function uploadEvidenceMedia(
+  evidenceId: number,
+  file: File,
+  fileType: string
+) {
   const form = new FormData();
+
   form.append("file", file);
-  form.append("file_type", fileType);
-  const { data } = await api.post(`/evidence/${evidenceId}/media/`, form, {
-    headers: { "Content-Type": "multipart/form-data" },
-  });
+  form.append("media_type", fileType);
+
+  const { data } = await api.post(
+    `/evidence/${evidenceId}/media/`,
+    form
+  );
+
   return data;
 }

@@ -51,7 +51,22 @@ export default function CriminalCaseDetail({
   remoteImages: RemoteImages;
   handlers: CriminalHandlers;
 }) {
-  const info = data.caseInfo;
+  const info = data?.caseInfo ?? {
+    caseId: "",
+    caseYear: "",
+    incidentType: "",
+    inspectionDate: "",
+    description: "",
+    policeDepartment: "",
+    governorate: "",
+    investigator: "",
+    locationName: "",
+    address: "",
+    locationGovernorate: "",
+    city: "",
+    district: "",
+    stationUsername: "",
+  };
   const { t } = useTranslation(["cases", "common"]);
 
   // Helper function to translate incident types
@@ -82,6 +97,18 @@ export default function CriminalCaseDetail({
     if (normalizedType === "undefined") return t("cases:evidenceTypes.undefined");
     
     return type;
+  };
+
+  const victims = data?.victims ?? [];
+  const suspects = data?.suspects ?? [];
+  const reporters = data?.reporters ?? [];
+  const evidence = data?.evidence ?? [];
+
+  const safeRemoteImages = {
+    victims: Array.isArray(remoteImages?.victims) ? remoteImages.victims : [],
+    suspects: Array.isArray(remoteImages?.suspects) ? remoteImages.suspects : [],
+    reporters: Array.isArray(remoteImages?.reporters) ? remoteImages.reporters : [],
+    evidences: Array.isArray(remoteImages?.evidences) ? remoteImages.evidences : [],
   };
 
   return (
@@ -134,18 +161,18 @@ export default function CriminalCaseDetail({
             <div className="flex h-8 w-8 items-center justify-center rounded-xl bg-[#e5f5fc] text-[#0089c7]">
               <UserRound size={15} />
             </div>
-            <h2 className="text-xl font-bold text-[#12385a]">{t("cases:sections.victims")} ({data.victims.length})</h2>
+            <h2 className="text-xl font-bold text-[#12385a]">{t("cases:sections.victims")} ({victims.length})</h2>
           </div>
           <button onClick={handlers.addVictim} className="print:hidden h-9 px-3.5 rounded-xl border border-slate-200 bg-white hover:bg-slate-50 inline-flex items-center gap-1.5 text-[#005588] text-xs font-semibold transition">
             <UserPlus size={14} />
             {t("cases:validation.addVictim")}
           </button>
         </div>
-        {data.victims.length === 0 ? (
+        {victims.length === 0 ? (
           <EmptyHint message={t("cases:validation.noVictims")} />
         ) : (
           <div className="space-y-4">
-            {data.victims.map((v, i) => (
+            {victims.map((v, i) => (
               <div key={`victim-${i}`} className="relative">
                 <button onClick={() => handlers.removeVictim(i)} className="print:hidden absolute top-3 right-3 z-10 text-[11px] font-bold text-gray-400 hover:text-rose-500 transition">{t("cases:validation.remove")}</button>
                 <PersonEditableCard
@@ -153,7 +180,7 @@ export default function CriminalCaseDetail({
                   icon={UserRound}
                   iconColor="bg-[#e5f5fc] text-[#0089c7]"
                   person={v}
-                  imageUrls={remoteImages.victims[i]}
+                  imageUrls={safeRemoteImages.victims[i] ?? []}
                   onChange={(p) => handlers.patchVictim(i, p)}
                   onImageAction={(action, payload) => handlers.handleVictimImageAction(i, action, payload)}
                 />
@@ -169,18 +196,18 @@ export default function CriminalCaseDetail({
             <div className="flex h-8 w-8 items-center justify-center rounded-xl bg-[#fef2f2] text-[#dc2626]">
               <AlertTriangle size={15} />
             </div>
-            <h2 className="text-xl font-bold text-[#12385a]">{t("cases:sections.suspects")} ({data.suspects.length})</h2>
+            <h2 className="text-xl font-bold text-[#12385a]">{t("cases:sections.suspects")} ({suspects.length})</h2>
           </div>
           <button onClick={handlers.addSuspect} className="print:hidden h-9 px-3.5 rounded-xl border border-slate-200 bg-white hover:bg-slate-50 inline-flex items-center gap-1.5 text-[#005588] text-xs font-semibold transition">
             <UserPlus size={14} />
             {t("cases:validation.addSuspect")}
           </button>
         </div>
-        {data.suspects.length === 0 ? (
+        {suspects.length === 0 ? (
           <EmptyHint message={t("cases:validation.noSuspects")} />
         ) : (
           <div className="space-y-4">
-            {data.suspects.map((s, i) => (
+            {suspects.map((s, i) => (
               <div key={`suspect-${i}`} className="relative">
                 <button onClick={() => handlers.removeSuspect(i)} className="print:hidden absolute top-3 right-3 z-10 text-[11px] font-bold text-gray-400 hover:text-rose-500 transition">{t("cases:validation.remove")}</button>
                 <PersonEditableCard
@@ -188,7 +215,7 @@ export default function CriminalCaseDetail({
                   icon={AlertTriangle}
                   iconColor="bg-[#fef2f2] text-[#dc2626]"
                   person={s}
-                  imageUrls={remoteImages.suspects[i]}
+                  imageUrls={safeRemoteImages.suspects[i] ?? []}
                   onChange={(p) => handlers.patchSuspect(i, p)}
                   onImageAction={(action, payload) => handlers.handleSuspectImageAction(i, action, payload)}
                 />
@@ -206,11 +233,11 @@ export default function CriminalCaseDetail({
             </div>
             <h2 className="text-xl font-bold text-[#12385a]">{t("cases:sections.reporter")}</h2>
           </div>
-          {data.reporters[0] ? (
+          {reporters[0] ? (
             <button onClick={() => handlers.patchReporter(null)} className="print:hidden text-[11px] font-bold text-gray-400 hover:text-rose-500 transition">{t("cases:validation.clearReporter")}</button>
           ) : null}
         </div>
-        {!data.reporters[0] ? (
+        {!reporters[0] ? (
           <div className="rounded-2xl border-2 border-dashed border-slate-200 p-8 flex flex-col items-center justify-center text-center text-gray-400 hover:border-[#005588] hover:text-[#005588] transition cursor-pointer" onClick={() => handlers.patchReporter({ ...handlers.emptyPerson })}>
             <UserPlus size={20} className="mb-2" />
             <p className="text-sm font-semibold">{t("cases:validation.noReporter")}</p>
@@ -220,8 +247,8 @@ export default function CriminalCaseDetail({
             title={t("cases:sections.reporter")}
             icon={FileText}
             iconColor="bg-[#e5f5fc] text-[#0089c7]"
-            person={data.reporters[0]}
-            imageUrls={remoteImages.reporters[0]}
+            person={reporters[0]}
+            imageUrls={safeRemoteImages.reporters[0] ?? []}
             onChange={handlers.patchReporter}
             onImageAction={handlers.handleReporterImageAction}
           />
@@ -234,7 +261,7 @@ export default function CriminalCaseDetail({
             <div className="flex h-8 w-8 items-center justify-center rounded-xl bg-[#e5f5fc] text-[#0089c7]">
               <Fingerprint size={15} />
             </div>
-            <h2 className="text-xl font-bold text-[#12385a]">{t("cases:sections.evidence")} ({data.evidence.length})</h2>
+            <h2 className="text-xl font-bold text-[#12385a]">{t("cases:sections.evidence")} ({evidence.length})</h2>
           </div>
           <button onClick={handlers.addEvidence} className="print:hidden h-9 px-3.5 rounded-xl border border-slate-200 bg-white hover:bg-slate-50 inline-flex items-center gap-1.5 text-[#005588] text-xs font-semibold transition">
             <Fingerprint size={14} />
@@ -242,11 +269,11 @@ export default function CriminalCaseDetail({
           </button>
         </div>
 
-        {data.evidence.length === 0 ? (
+        {evidence.length === 0 ? (
           <EmptyHint message={t("cases:validation.noEvidenceLogged")} />
         ) : (
           <div className="space-y-4">
-            {data.evidence.map((ev, i) => {
+            {evidence.map((ev, i) => {
               function patch<K extends keyof EvidenceData>(key: K, v: EvidenceData[K]): void {
                 handlers.patchEvidence(i, { ...ev, [key]: v });
               }
@@ -266,7 +293,7 @@ export default function CriminalCaseDetail({
                       </p>
                       <EvidenceImage
                         evidence={ev}
-                        imageUrls={remoteImages.evidences[i]}
+                        imageUrls={safeRemoteImages.evidences[i] ?? []}
                         onChange={(action, payload) => handlers.handleEvidenceImageAction(i, action, payload)}
                       />
                     </div>

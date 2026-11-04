@@ -1,49 +1,113 @@
-import axios from "axios";
 
-const API_URL = "http://10.227.221.88:8000/api";
+import axios, { AxiosError, InternalAxiosRequestConfig } from "axios";
 
-export const api = axios.create({ baseURL: API_URL });
+const API_URL =
+  import.meta.env.VITE_API_URL || "http://localhost:8000/api";
 
+export const api = axios.create({
+  baseURL: API_URL,
+});
+
+// Track whether a request has already been retried.
+interface RetryableRequest extends InternalAxiosRequestConfig {
+  _retry?: boolean;
+}
+
+// Share one refresh request between all concurrent 401 responses.
+let refreshPromise: Promise<string> | null = null;
+
+function refreshAccessToken(): Promise<string> {
+  if (!refreshPromise) {
+    const refresh = localStorage.getItem("refresh");
+
+    if (!refresh) {
+      return Promise.reject(new Error("No refresh token available"));
+    }
+
+    refreshPromise = axios
+      .post(`${API_URL}/auth/refresh/`, { refresh })
+      .then(({ data }) => {
+        localStorage.setItem("access", data.access);
+
+        if (data.refresh) {
+          localStorage.setItem("refresh", data.refresh);
+        }
+
+        return data.access as string;
+      })
+      .finally(() => {
+        refreshPromise = null;
+      });
+  }
+
+  return refreshPromise;
+}
+
+// Attach the current access token to each request.
 api.interceptors.request.use((config) => {
   const token = localStorage.getItem("access");
-  if (token) config.headers.Authorization = `Bearer ${token}`;
+
+  if (token) {
+    config.headers.Authorization = `Bearer ${token}`;
+  }
+
   return config;
 });
 
-
-// On a 401, try refreshing the access token once, then retry the request.
-// If refresh also fails, drop the session and send the user back to login.
+// Handle expired access tokens and permission errors.
 api.interceptors.response.use(
   (response) => response,
-  async (error) => {
-    const original = error.config;
-    if (error.response?.status === 401 && !original._retry) {
-      original._retry = true;
-      const refresh = localStorage.getItem("refresh");
-      if (refresh) {
-        try {
-          const { data } = await axios.post(`${API_URL}/auth/refresh/`, { refresh });
-          localStorage.setItem("access", data.access);
-          if (data.refresh) localStorage.setItem("refresh", data.refresh);
-          original.headers.Authorization = `Bearer ${data.access}`;
-          return api(original);
-        } catch (refreshError: any) {
-          // Network error: keep the session and tokens for later.
-          if (!refreshError.response) {
-            return Promise.reject(refreshError);
-          }
+  async (error: AxiosError) => {
+    const original = error.config as RetryableRequest | undefined;
 
-          // Server rejected the refresh request.
-          localStorage.removeItem("access");
-          localStorage.removeItem("refresh");
-          window.location.href = "/login";
-
-          return Promise.reject(refreshError);
+    // Handle 403 Forbidden - Permission denied
+    // Do NOT attempt token refresh on 403
+    if (error.response?.status === 403) {
+      // Redirect to unauthorized page
+      // Use setTimeout to avoid potential redirect loops during initial page load
+      setTimeout(() => {
+        if (window.location.pathname !== '/unauthorized' && 
+            window.location.pathname !== '/login') {
+          window.location.href = '/unauthorized';
         }
-      } else {
-        window.location.href = "/login";
-      }
+      }, 100);
+      
+      return Promise.reject(error);
     }
-    return Promise.reject(error);
+
+    // Handle 401 Unauthorized - Token expired or invalid
+    if (
+      error.response?.status !== 401 ||
+      !original ||
+      original._retry
+    ) {
+      return Promise.reject(error);
+    }
+
+    original._retry = true;
+
+    try {
+      const newAccessToken = await refreshAccessToken();
+
+      original.headers.Authorization = `Bearer ${newAccessToken}`;
+
+      return api(original);
+    } catch (refreshError) {
+      // Keep the session if the failure is a network error.
+      if (
+        axios.isAxiosError(refreshError) &&
+        !refreshError.response
+      ) {
+        return Promise.reject(refreshError);
+      }
+
+      // The server rejected the refresh token.
+      localStorage.removeItem("access");
+      localStorage.removeItem("refresh");
+
+      window.location.href = "/login";
+
+      return Promise.reject(refreshError);
+    }
   }
 );

@@ -16,6 +16,8 @@ import {
   FileText,
   Upload,
 } from "lucide-react";
+import toast from "react-hot-toast";
+import { validateUploadSize } from "@/utils/media";
 import type {
   CaseData,
   EvidenceData,
@@ -254,11 +256,56 @@ export function MediaTile({
 }) {
   const dim = variant === "wide" ? "h-24 w-28" : "h-24 w-24";
 
+  // Handle missing or invalid src
+  if (!src) {
+    return (
+      <div className="relative group">
+        <div className={`${dim} rounded-2xl overflow-hidden border-2 border-slate-200 bg-slate-100 flex items-center justify-center`}>
+          <div className="text-center p-2">
+            <FileText size={20} className="text-slate-400 mx-auto mb-1" />
+            <span className="text-[9px] text-slate-400">No media</span>
+          </div>
+        </div>
+        {onRemove && (
+          <button
+            type="button"
+            onClick={onRemove}
+            className="absolute -top-2 -right-2 h-6 w-6 rounded-full bg-rose-500 text-white flex items-center justify-center opacity-0 group-hover:opacity-100 transition hover:bg-rose-600 shadow-lg"
+            title="إزالة"
+          >
+            ×
+          </button>
+        )}
+      </div>
+    );
+  }
+
   return (
     <div className="relative group">
       <div className={`${dim} rounded-2xl overflow-hidden border-2 ${isRemote ? "border-slate-200" : "border-[#005588]"} bg-slate-50`}>
         {kind === "image" ? (
-          <img src={src} alt={alt || "media"} className="w-full h-full object-cover" />
+          <img 
+            src={src} 
+            alt={alt || "media"} 
+            className="w-full h-full object-cover" 
+            onError={(e) => {
+              const target = e.target as HTMLImageElement;
+              target.style.display = "none";
+              const parent = target.parentElement;
+              if (parent) {
+                parent.innerHTML = `
+                  <div class="w-full h-full flex items-center justify-center bg-slate-100">
+                    <div class="text-center p-2">
+                      <svg class="w-5 h-5 text-slate-400 mx-auto mb-1" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 16l4.586-4.586a2 2 0 012.828 0L16 16m-2-2l1.586-1.586a2 2 0 012.828 0L20 14m-6-6h.01M6 20h12a2 2 0 002-2V6a2 2 0 00-2-2H6a2 2 0 00-2 2v12a2 2 0 002 2z"></path>
+                      </svg>
+                      <span class="text-[9px] text-slate-400">Failed to load</span>
+                    </div>
+                  </div>
+                `;
+              }
+            }}
+          />
         ) : kind === "video" ? (
           <video src={src} controls className="w-full h-full bg-black" />
         ) : kind === "audio" ? (
@@ -320,11 +367,23 @@ export function PersonImage({
 
     function onPick(e: React.ChangeEvent<HTMLInputElement>) {
       const files = Array.from(e.target.files || []);
+      if (files.length === 0) return;
+      
+      // Validate combined size (new files + existing files)
+      const existingImages = person?.images ?? [];
+      const validation = validateUploadSize(files, existingImages);
+      
+      if (!validation.isValid) {
+        toast.error(validation.errorMessage || "File size limit exceeded");
+        if (fileRef.current) fileRef.current.value = "";
+        return;
+      }
+      
       files.forEach((f) => onChange("add", f));
       if (fileRef.current) fileRef.current.value = "";
     }
 
-    const remote = imageUrls ?? [];
+    const remote = Array.isArray(imageUrls) ? imageUrls.filter(img => img && img.url) : [];
 
     return (
       <div className="flex flex-col items-start gap-2">
@@ -337,7 +396,7 @@ export function PersonImage({
                 kind={kind}
                 src={img.url}
                 fileName={img.file_name}
-                alt={`${person.fullName || "person"}`}
+                alt={`${person?.fullName || "person"}`}
                 downloadUrl={img.url}
                 isRemote
                 onRemove={() => onChange("remove", img.id)}
@@ -345,7 +404,7 @@ export function PersonImage({
             );
           })}
 
-          {person.images.map((f, i) => {
+          {(person?.images ?? []).map((f, i) => {
             const kind = guessMediaKind({ type: f.type, name: f.name });
             return (
               <MediaTile
@@ -354,7 +413,7 @@ export function PersonImage({
                 src={URL.createObjectURL(f)}
                 fileName={f.name}
                 size={formatSize(f.size)}
-                alt={person.fullName || "new"}
+                alt={person?.fullName || "new"}
                 onRemove={() => onChange("remove-new", i)}
               />
             );
@@ -394,11 +453,23 @@ export function EvidenceImage({
 
     function onPick(e: React.ChangeEvent<HTMLInputElement>) {
       const files = Array.from(e.target.files || []);
+      if (files.length === 0) return;
+      
+      // Validate combined size (new files + existing files)
+      const existingImages = evidence?.images ?? [];
+      const validation = validateUploadSize(files, existingImages);
+      
+      if (!validation.isValid) {
+        toast.error(validation.errorMessage || "File size limit exceeded");
+        if (fileRef.current) fileRef.current.value = "";
+        return;
+      }
+      
       files.forEach((f) => onChange("add", f));
       if (fileRef.current) fileRef.current.value = "";
     }
 
-    const remote = imageUrls ?? [];
+    const remote = Array.isArray(imageUrls) ? imageUrls.filter(img => img && img.url) : [];
 
     return (
       <div className="flex flex-col items-start gap-2">
@@ -411,7 +482,7 @@ export function EvidenceImage({
                 kind={kind}
                 src={img.url}
                 fileName={img.file_name}
-                alt={`Evidence ${evidence.evidenceId}`}
+                alt={`Evidence ${evidence?.evidenceId || "evidence"}`}
                 downloadUrl={img.url}
                 isRemote
                 variant="wide"
@@ -420,7 +491,7 @@ export function EvidenceImage({
             );
           })}
 
-          {evidence.images.map((f, i) => {
+          {(evidence?.images ?? []).map((f, i) => {
             const kind = guessMediaKind({ type: f.type, name: f.name });
             return (
               <MediaTile
@@ -429,7 +500,7 @@ export function EvidenceImage({
                 src={URL.createObjectURL(f)}
                 fileName={f.name}
                 size={formatSize(f.size)}
-                alt={`Evidence ${evidence.evidenceId}`}
+                alt={`Evidence ${evidence?.evidenceId || "evidence"}`}
                 variant="wide"
                 onRemove={() => onChange("remove-new", i)}
               />
