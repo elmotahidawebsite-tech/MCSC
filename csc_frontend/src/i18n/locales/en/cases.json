@@ -489,5 +489,15 @@
     "saving": "Saving...",
     "saved": "Saved",
     "deletingCase": "Deleting..."
+  },
+  "fileSize": {
+    "totalCaseFileSize": "Total Case File Size",
+    "used": "Used",
+    "remaining": "Remaining",
+    "maxLimit": "Max Limit",
+    "usedPercent": "used",
+    "megabyte": "MB",
+    "kilobyte": "KB",
+    "byte": "B"
   }
 }

@@ -1,4 +1,5 @@
 import { api } from "./client";
+import { mediaKind, type MediaKind } from "../utils/media";
 
 // ===== أنواع محلية مطابقة للـ CaseContext =====
 export type PersonPayload = {
@@ -106,16 +107,6 @@ export type SubmitCivilCasePayload = {
   evidence: EvidencePayload[];
 };
 
-// ===== ✅ تحديد نوع الوسيط من الـ MIME =====
-type MediaKind = "image" | "video" | "audio" | "document";
-
-function mediaKind(f: File): MediaKind {
-  if (f.type.startsWith("image/")) return "image";
-  if (f.type.startsWith("video/")) return "video";
-  if (f.type.startsWith("audio/")) return "audio";
-  return "document";
-}
-
 // ===== تحويلات الأسماء (فرونت → باك) =====
 function personBody(p: PersonPayload, role: string) {
   return {
@@ -168,7 +159,7 @@ function corpseSpecsBody(s: CorpsesSpecificationsPayload) {
     facial_features_reason: s.facialFeaturesReason || null,
     hand_fingerprints: s.handFingerprints || null,
     hand_fingerprints_reason: s.handFingerprintsReason || null,
-    biological_sample: s.biologicalSample.length ? s.biologicalSample.join(",") : null,
+    biological_sample: s.biologicalSample ?? [],
     specifications_notes: s.notes || null,
   };
 }
@@ -304,8 +295,8 @@ export async function submitCorpsesCase(
     case_type: "body",
     case_number: info.caseNumber,
     case_year: info.caseYear ? Number(info.caseYear) : null,
-  governorate: info.governorate,
-  police_department: info.policeDepartment,
+    governorate: info.governorate,
+    police_department: info.policeDepartment,
     date_of_discovery: info.dateOfDiscovery || null,
     inspection_date: info.inspectionDate || null,
     location_of_body_presence: info.locationOfBodyPresence,
@@ -345,50 +336,50 @@ export async function submitCorpsesCase(
 }
 
 export async function submitCivilCase(
-    data: SubmitCivilCasePayload,
-    submit = true
-  ): Promise<number> {
-    const info = data.civilCaseInfo;
+  data: SubmitCivilCasePayload,
+  submit = true
+): Promise<number> {
+  const info = data.civilCaseInfo;
 
-    const caseRes = await api.post("/cases/", {
-      case_type: "civil",
-      case_number: info.caseNumber,
-      case_year: info.caseYear ? Number(info.caseYear) : null,
-      date_of_receipt: info.dateOfReceipt || null,
-      receipt_authority: info.receiptAuthority,
-      date_of_transfer: info.dateOfTransfer || null,
-      transferred_authority: info.transferredAuthority,
-      governorate: info.governorate,
-      fingerprint_type: info.fingerprintType,
-      fingerprint_holder: info.fingerprintHolder,
-      comparison_document: info.comparisonDocument,
-      type_of_comparison_document: info.typeOfComparisonDocument,
-      expert: info.expert,
-      photographer: info.photographer,
-      notes: info.notes,
-    });
-    const caseId: number = caseRes.data.id;
+  const caseRes = await api.post("/cases/", {
+    case_type: "civil",
+    case_number: info.caseNumber,
+    case_year: info.caseYear ? Number(info.caseYear) : null,
+    date_of_receipt: info.dateOfReceipt || null,
+    receipt_authority: info.receiptAuthority,
+    date_of_transfer: info.dateOfTransfer || null,
+    transferred_authority: info.transferredAuthority,
+    governorate: info.governorate,
+    fingerprint_type: info.fingerprintType,
+    fingerprint_holder: info.fingerprintHolder,
+    comparison_document: info.comparisonDocument,
+    type_of_comparison_document: info.typeOfComparisonDocument,
+    expert: info.expert,
+    photographer: info.photographer,
+    notes: info.notes,
+  });
+  const caseId: number = caseRes.data.id;
 
-    await attachPersonsAndEvidence(
-      caseId,
-      [
-        { list: data.victims, role: "victim" },
-        { list: data.suspects, role: "suspect" },
-        { list: data.reporters, role: "reporter" },
-      ],
-      data.evidence
-    );
+  await attachPersonsAndEvidence(
+    caseId,
+    [
+      { list: data.victims, role: "victim" },
+      { list: data.suspects, role: "suspect" },
+      { list: data.reporters, role: "reporter" },
+    ],
+    data.evidence
+  );
 
-    // ✅ صور القضية المدنية
-    for (const img of (info as any).images ?? []) {
-      const fd = new FormData();
-      fd.append("image", img);
-      fd.append("media_type", mediaKind(img));  // ✅
-      await api.post(`/cases/${caseId}/images/`, fd);
-    }
+  // ✅ صور القضية المدنية
+  for (const img of (info as any).images ?? []) {
+    const fd = new FormData();
+    fd.append("image", img);
+    fd.append("media_type", mediaKind(img));  // ✅
+    await api.post(`/cases/${caseId}/images/`, fd);
+  }
 
-    if (submit) {
-      await api.post(`/cases/${caseId}/submit/`);
-    }
-    return caseId;
+  if (submit) {
+    await api.post(`/cases/${caseId}/submit/`);
+  }
+  return caseId;
 }

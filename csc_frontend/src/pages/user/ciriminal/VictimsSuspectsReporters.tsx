@@ -17,23 +17,11 @@ import {
 import toast, { Toaster } from "react-hot-toast";
 import { useCase } from "../../../context/CaseContext";
 import type { PersonData } from "../../../context/CaseContext";
+import { mediaKind, formatSize, type MediaKind } from "@/utils/media";
+import { validateCaseFileSize } from "@/utils/caseFileSize";
+import { CaseFileSizeIndicator } from "@/components/common/CaseFileSizeIndicator";
 
 type PersonType = "victim" | "suspect" | "reporter";
-
-type MediaKind = "image" | "video" | "audio" | "document";
-
-function mediaKind(f: File): MediaKind {
-  if (f.type.startsWith("image/")) return "image";
-  if (f.type.startsWith("video/")) return "video";
-  if (f.type.startsWith("audio/")) return "audio";
-  return "document";
-}
-
-function formatSize(bytes: number): string {
-  if (bytes >= 1024 * 1024) return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
-  if (bytes >= 1024) return `${(bytes / 1024).toFixed(0)} KB`;
-  return `${bytes} B`;
-}
 
 type PersonCardProps = {
   type: PersonType;
@@ -65,6 +53,7 @@ function PersonCard({
   const fileInputRef = useRef<HTMLInputElement>(null);
   const [previewUrls, setPreviewUrls] = useState<string[]>([]);
   const { t } = useTranslation(["cases", "common"]);
+  const { caseData } = useCase();
 
   const typeLabel =
     type === "victim"
@@ -87,22 +76,22 @@ function PersonCard({
     };
   }, [person.images]);
 
-  // ✅ بيقبل صور + فيديو + صوت + مستندات
+  // ✅ Global case-level 200 MB limit validation
   function handleImagesChange(e: ChangeEvent<HTMLInputElement>): void {
     const files = e.target.files;
     if (files && files.length > 0) {
-      const arr: File[] = [];
-      for (let i = 0; i < files.length; i++) {
-        const f = files[i];
-        const kind = mediaKind(f);
-        const limit = kind === "image" ? 25 * 1024 * 1024 : 150 * 1024 * 1024;
-        if (f.size > limit) {
-          toast.error(`"${f.name}" كبير جدًا — الحد الأقصى ${kind === "image" ? 25 : 150}MB.`);
-          continue;
-        }
-        arr.push(f);
+      const newFiles = Array.from(files);
+      
+      // Validate against global case limit (200 MB total)
+      const validation = validateCaseFileSize(caseData, newFiles);
+      
+      if (!validation.isValid) {
+        toast.error(validation.errorMessage || "تجاوز الحد الأقصى للملفات");
+        if (fileInputRef.current) fileInputRef.current.value = "";
+        return;
       }
-      if (arr.length > 0) onAddImages(arr);
+      
+      onAddImages(newFiles);
     }
     if (fileInputRef.current) fileInputRef.current.value = "";
   }
@@ -450,6 +439,7 @@ export default function VictimsSuspectsReporters() {
     <div className="min-h-full">
       <Toaster position={isRtl ? "top-left" : "top-right"} />
       <div className="mx-auto w-full max-w-6xl pb-6">
+        <CaseFileSizeIndicator />
         <div className={`mb-5 flex items-start justify-between ${isRtl ? "flex-row-reverse text-right" : ""}`}>
           <div>
             <h1 className="text-2xl font-bold tracking-tight text-[#0f2942]">

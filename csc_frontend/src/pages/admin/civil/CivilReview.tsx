@@ -16,6 +16,8 @@ import {
 } from "lucide-react";
 import type { CaseData } from "../../../context/CaseContext";
 import { api } from "../../../api/client";
+import { sanitizeFilename } from "@/utils/download";
+import { usePermissions } from "@/hooks/usePermissions";
 
 function Field({
   label,
@@ -87,6 +89,7 @@ export default function AdminCivilReview() {
   const { caseId } = useParams();
   const navigate = useNavigate();
   const { t } = useTranslation(["cases", "common"]);
+  const { canExportCase } = usePermissions();
   const [caseData, setCaseData] = useState<CaseData | null>(null);
   const [loading, setLoading] = useState(true);
   const [downloading, setDownloading] = useState(false);
@@ -96,11 +99,7 @@ export default function AdminCivilReview() {
   const translateCivilValue = (value: string): string => {
     if (!value) return "";
     
-    // Trim and normalize the value
     const normalizedValue = value.trim();
-    
-    // Debug log to check the value
-    console.log('Translating civil value:', { original: value, normalized: normalizedValue });
     
     // Fingerprint Type translations
     if (normalizedValue === "Digital") return t("cases:civil.digitalFingerprint");
@@ -118,7 +117,6 @@ export default function AdminCivilReview() {
     if (normalizedValue === "Other") return t("cases:civil.other");
     
     // Return original value if no translation found
-    console.log('No translation found for:', normalizedValue);
     return value;
   };
 
@@ -133,7 +131,6 @@ export default function AdminCivilReview() {
           setFileUrls(response.data.civilCaseInfo.caseFileUrls);
         }
       } catch (error) {
-        console.error("Failed to fetch case:", error);
         toast.error(t("cases:review.failedToLoadCase"));
       } finally {
         setLoading(false);
@@ -156,14 +153,13 @@ export default function AdminCivilReview() {
       const url = URL.createObjectURL(res.data);
       const a = document.createElement("a");
       a.href = url;
-      a.download = `CivilCase_${caseData?.civilCaseInfo?.caseNumber || caseId}.zip`;
+      a.download = sanitizeFilename(`CivilCase_${caseData?.civilCaseInfo?.caseNumber || caseId}.zip`);
       document.body.appendChild(a);
       a.click();
       document.body.removeChild(a);
       setTimeout(() => URL.revokeObjectURL(url), 1500);
       toast.success(t("cases:review.downloadSuccess"), { duration: 3000 });
     } catch (error) {
-      console.error("Download failed:", error);
       toast.error(t("cases:review.downloadFailed"));
     } finally {
       setDownloading(false);
@@ -217,15 +213,17 @@ export default function AdminCivilReview() {
           </div>
 
           <div className="flex gap-3">
-            <button
-              type="button"
-              onClick={handleDownload}
-              disabled={downloading}
-              className="inline-flex h-10 items-center gap-2 rounded-lg border border-[#dbe5ec] bg-white px-5 text-sm font-medium text-[#475569] transition hover:bg-[#f1f5f9] disabled:opacity-50"
-            >
-              <Download size={16} />
-              {downloading ? t("cases:review.downloading") : t("cases:review.downloadCase")}
-            </button>
+            {canExportCase && (
+              <button
+                type="button"
+                onClick={handleDownload}
+                disabled={downloading}
+                className="inline-flex h-10 items-center gap-2 rounded-lg border border-[#dbe5ec] bg-white px-5 text-sm font-medium text-[#475569] transition hover:bg-[#f1f5f9] disabled:opacity-50"
+              >
+                <Download size={16} />
+                {downloading ? t("cases:review.downloading") : t("cases:review.downloadCase")}
+              </button>
+            )}
           </div>
         </div>
 

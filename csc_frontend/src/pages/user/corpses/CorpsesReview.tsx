@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect,useRef, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { useTranslation } from "react-i18next";
 import toast, { Toaster } from "react-hot-toast";
@@ -26,6 +26,7 @@ import { useCase } from "@/context/CaseContext";
 import type { CorpsesSpecifications } from "@/context/CaseContext";
 import { submitCorpsesCase } from "@/api/cases";
 import { api } from "@/api/client";
+import { sanitizeFilename } from "@/utils/download";
 
 function Field({
   label,
@@ -387,6 +388,7 @@ export default function CorpsesReview() {
   const { caseData, resetCase } = useCase();
   const { t } = useTranslation(["cases", "common"]);
   const [submitting, setSubmitting] = useState(false);
+  const submitLockRef = useRef(false);
   const [expanded, setExpanded] = useState<Record<number, boolean>>(() => ({ 0: true }));
 
   const info = caseData.corpsesCaseInfo;
@@ -457,8 +459,9 @@ export default function CorpsesReview() {
       toast.error(error);
       return;
     }
-
+    if (submitLockRef.current) return;
     try {
+      submitLockRef.current = true;
       setSubmitting(true);
 
       const caseId: number = await submitCorpsesCase(caseData, true);
@@ -473,20 +476,19 @@ export default function CorpsesReview() {
       );
 
       try {
-        const res = await api.get(`/cases/${caseId}/download/`, {
-          responseType: "blob",
-        });
-        const url = URL.createObjectURL(res.data);
+        // const res = await api.get(`/cases/${caseId}/download/`, {
+        //   responseType: "blob",
+        // });
+        // const url = URL.createObjectURL(res.data);
         const a = document.createElement("a");
-        a.href = url;
-        a.download = `CorpsesCase_${info.caseNumber || caseId}.zip`;
+        // a.href = url;
+        // a.download = sanitizeFilename(`CorpsesCase_${info.caseNumber || caseId}.zip`);
         document.body.appendChild(a);
         a.click();
         document.body.removeChild(a);
-        setTimeout(() => URL.revokeObjectURL(url), 1500);
-        toast.success(t("cases:review.downloadSuccess"), { duration: 3000 });
+        // setTimeout(() => URL.revokeObjectURL(url), 1500);
+        // toast.success(t("cases:review.downloadSuccess"), { duration: 3000 });
       } catch (dlErr) {
-        console.error(dlErr);
         toast.error(t("cases:review.downloadFailed"));
       }
 
@@ -503,6 +505,7 @@ export default function CorpsesReview() {
         t("cases:review.submitFailed")
       );
     } finally {
+      submitLockRef.current = false;
       setSubmitting(false);
     }
   }

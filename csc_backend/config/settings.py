@@ -13,59 +13,10 @@ logger = logging.getLogger("csc")
 
 BASE_DIR = Path(__file__).resolve().parent.parent
 
-# =============================================================================
-# SECURITY SETTINGS - Production Ready
-# =============================================================================
-
-# ✅ DEBUG: False افتراضيًا في الإنتاج
-# بتقرأ من .env أو متغيرات البيئة
-DEBUG = config('DJANGO_DEBUG', default=False, cast=bool)
-
-# ✅ SECRET_KEY: لازم يكون من .env في الإنتاج
-SECRET_KEY = config('DJANGO_SECRET_KEY', default=None)
-
-if not SECRET_KEY:
-    if DEBUG:
-        # في التطوير: نولد مفتاح عشوائي مؤقت (أأمن من ثابت)
-        import secrets
-        SECRET_KEY = "dev-" + secrets.token_urlsafe(40)
-        logger.warning("Generated temporary SECRET_KEY for development. Set DJANGO_SECRET_KEY in .env for consistency.")
-    else:
-        # في الإنتاج: نفشل فورًا
-        raise RuntimeError(
-            "❌ CRITICAL: DJANGO_SECRET_KEY is not set!\n"
-            "Generate one with:\n"
-            '  python -c "from django.core.management.utils import get_random_secret_key; print(get_random_secret_key())"\n'
-            "Then add it to your .env file:\n"
-            "  DJANGO_SECRET_KEY=your-generated-key"
-        )
-
-# ✅ ALLOWED_HOSTS: محدد بدقة في الإنتاج
-if DEBUG:
-    ALLOWED_HOSTS = ["localhost", "127.0.0.1", "0.0.0.0"]
-else:
-    allowed_hosts = config('DJANGO_ALLOWED_HOSTS', default='', cast=Csv())
-    if not allowed_hosts:
-        raise RuntimeError(
-            "❌ CRITICAL: DJANGO_ALLOWED_HOSTS is not set!\n"
-            "Add it to your .env file:\n"
-            "  DJANGO_ALLOWED_HOSTS=yourdomain.com,api.yourdomain.com"
-        )
-    ALLOWED_HOSTS = allowed_hosts
-
-# ✅ Security Headers (تعمل تلقائيًا في الإنتاج)
-if not DEBUG:
-    SECURE_SSL_REDIRECT = True
-    SESSION_COOKIE_SECURE = True
-    CSRF_COOKIE_SECURE = True
-    SECURE_HSTS_SECONDS = 31536000
-    SECURE_HSTS_INCLUDE_SUBDOMAINS = True
-    SECURE_HSTS_PRELOAD = True
-    SECURE_CONTENT_TYPE_NOSNIFF = True
-    X_FRAME_OPTIONS = "DENY"
-
-# ✅ مفتاح JWT منفصل (اختياري)
-JWT_SIGNING_KEY = config('JWT_SIGNING_KEY', default=SECRET_KEY)
+SECRET_KEY = os.environ.get("DJANGO_SECRET_KEY", "dev-only-change-me")
+DEBUG = os.environ.get("DJANGO_DEBUG", "True") == "True"
+# ALLOWED_HOSTS = os.environ.get("DJANGO_ALLOWED_HOSTS","http://192.168.1.2:5173","https://csc-frontend-self.vercel.app").split(",")
+ALLOWED_HOSTS = ["*"]
 INSTALLED_APPS = [
     "django.contrib.admin",
     "django.contrib.auth",
@@ -266,7 +217,7 @@ SIMPLE_JWT = {
 
 # --- CORS (MVP: open for local frontend dev, tighten later) ---
 CORS_ALLOWED_ORIGINS = os.environ.get(
-    "CORS_ALLOWED_ORIGINS", "http://localhost:5173,http://10.227.221.88:5173"
+    "CORS_ALLOWED_ORIGINS", "http://localhost:5173,http://192.168.1.2:5173,https://csc-frontend-self.vercel.app"
 ).split(",")
 
 # =============================================================================

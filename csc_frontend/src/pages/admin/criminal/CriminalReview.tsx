@@ -17,6 +17,8 @@ import {
 } from "lucide-react";
 import type { CaseData, PersonData, EvidenceData } from "../../../context/CaseContext";
 import { api } from "../../../api/client";
+import { sanitizeFilename } from "@/utils/download";
+import { usePermissions } from "@/hooks/usePermissions";
 
 function PersonPreviewImages({ person }: { person: PersonData }) {
   const [urls, setUrls] = useState<string[]>([]);
@@ -154,6 +156,7 @@ export default function AdminCriminalReview() {
   const { caseId } = useParams();
   const navigate = useNavigate();
   const { t } = useTranslation(["cases", "common"]);
+  const { canExportCase } = usePermissions();
   const [caseData, setCaseData] = useState<CaseData | null>(null);
   const [loading, setLoading] = useState(true);
   const [downloading, setDownloading] = useState(false);
@@ -164,8 +167,6 @@ export default function AdminCriminalReview() {
     
     const normalizedType = type.trim().toLowerCase();
     
-    console.log('🔍 Translating incident type:', { original: type, normalized: normalizedType });
-    
     if (normalizedType === "kill") return t("cases:incidentTypes.kill");
     if (normalizedType === "assault") return t("cases:incidentTypes.assault");
     if (normalizedType === "robbery") return t("cases:incidentTypes.robbery");
@@ -174,7 +175,6 @@ export default function AdminCriminalReview() {
     if (normalizedType === "fraud") return t("cases:incidentTypes.fraud");
     if (normalizedType === "other") return t("cases:incidentTypes.other");
     
-    console.log('⚠️ No translation found for incident type:', normalizedType);
     return type;
   };
   
@@ -184,13 +184,10 @@ export default function AdminCriminalReview() {
     
     const normalizedType = type.trim().toLowerCase();
     
-    console.log('🔍 Translating evidence type:', { original: type, normalized: normalizedType });
-    
     if (normalizedType === "finger") return t("cases:evidenceTypes.finger");
     if (normalizedType === "palm") return t("cases:evidenceTypes.palm");
     if (normalizedType === "undefined") return t("cases:evidenceTypes.undefined");
     
-    console.log('⚠️ No translation found for evidence type:', normalizedType);
     return type;
   };
 
@@ -200,7 +197,6 @@ export default function AdminCriminalReview() {
         const response = await api.get(`/cases/${caseId}`);
         setCaseData(response.data);
       } catch (error) {
-        console.error("Failed to fetch case:", error);
         toast.error(t("cases:review.failedToLoadCase"));
       } finally {
         setLoading(false);
@@ -223,14 +219,13 @@ export default function AdminCriminalReview() {
       const url = URL.createObjectURL(res.data);
       const a = document.createElement("a");
       a.href = url;
-      a.download = `Case_${caseData?.caseInfo?.caseId || caseId}.zip`;
+      a.download = sanitizeFilename(`Case_${caseData?.caseInfo?.caseId || caseId}.zip`);
       document.body.appendChild(a);
       a.click();
       document.body.removeChild(a);
       setTimeout(() => URL.revokeObjectURL(url), 1500);
       toast.success(t("cases:review.downloadSuccess"), { duration: 3000 });
     } catch (error) {
-      console.error("Download failed:", error);
       toast.error(t("cases:review.downloadFailed"));
     } finally {
       setDownloading(false);
@@ -284,15 +279,17 @@ export default function AdminCriminalReview() {
           </div>
 
           <div className="flex gap-3">
-            <button
-              type="button"
-              onClick={handleDownload}
-              disabled={downloading}
-              className="inline-flex h-10 items-center gap-2 rounded-lg border border-[#dbe5ec] bg-white px-5 text-sm font-medium text-[#475569] transition hover:bg-[#f1f5f9] disabled:opacity-50"
-            >
-              <Download size={16} />
-              {downloading ? t("cases:review.downloading") : t("cases:review.downloadCase")}
-            </button>
+            {canExportCase && (
+              <button
+                type="button"
+                onClick={handleDownload}
+                disabled={downloading}
+                className="inline-flex h-10 items-center gap-2 rounded-lg border border-[#dbe5ec] bg-white px-5 text-sm font-medium text-[#475569] transition hover:bg-[#f1f5f9] disabled:opacity-50"
+              >
+                <Download size={16} />
+                {downloading ? t("cases:review.downloading") : t("cases:review.downloadCase")}
+              </button>
+            )}
           </div>
         </div>
 

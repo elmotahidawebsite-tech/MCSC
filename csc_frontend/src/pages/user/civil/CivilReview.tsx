@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect,useRef, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { useTranslation } from "react-i18next";
 import toast, { Toaster } from "react-hot-toast";
@@ -18,6 +18,7 @@ import {
 import { useCase } from "../../../context/CaseContext";
 import { submitCivilCase } from "../../../api/cases";
 import { api } from "../../../api/client";
+import { sanitizeFilename } from "@/utils/download";
 
 function Field({
   label,
@@ -90,6 +91,7 @@ export default function CivilReview() {
   const { caseData, resetCase } = useCase();
   const { t } = useTranslation(["cases", "common"]);
   const [submitting, setSubmitting] = useState(false);
+  const submitLockRef = useRef(false);
   const [fileUrls, setFileUrls] = useState<string[]>([]);
 
   const info = caseData.civilCaseInfo;
@@ -165,7 +167,9 @@ export default function CivilReview() {
       return;
     }
 
+    if (submitLockRef.current) return;
     try {
+      submitLockRef.current = true;
       setSubmitting(true);
 
       const caseId: number = await submitCivilCase(caseData, true);
@@ -177,18 +181,18 @@ export default function CivilReview() {
       });
 
       try {
-        const res = await api.get(`/cases/${caseId}/download/`, {
-          responseType: "blob",
-        });
-        const url = URL.createObjectURL(res.data);
+        // const res = await api.get(`/cases/${caseId}/download/`, {
+        //   responseType: "blob",
+        // });
+        // const url = URL.createObjectURL(res.data);
         const a = document.createElement("a");
-        a.href = url;
-        a.download = `CivilCase_${info.caseNumber || caseId}.zip`;
+        // a.href = url;
+        // a.download = sanitizeFilename(`CivilCase_${info.caseNumber || caseId}.zip`);
         document.body.appendChild(a);
         a.click();
         document.body.removeChild(a);
-        setTimeout(() => URL.revokeObjectURL(url), 1500);
-        toast.success(t("cases:review.downloadSuccess"), { duration: 3000 });
+        // setTimeout(() => URL.revokeObjectURL(url), 1500);
+        // toast.success(t("cases:review.downloadSuccess"), { duration: 3000 });
       } catch (dlErr) {
         console.error(dlErr);
         toast.error(t("cases:review.downloadFailed"));
@@ -205,6 +209,7 @@ export default function CivilReview() {
       console.error(e);
       toast.error(t("cases:review.submitFailed"));
     } finally {
+      submitLockRef.current = false;
       setSubmitting(false);
     }
   }

@@ -20,6 +20,9 @@ import type { PersonData } from "@/context/CaseContext";
 import { caseInfoSchema } from "@/schemas/caseSchema";
 import type { ZodFormattedError } from "zod";
 import { GOVERNORATES_BILINGUAL } from "@/constants/governorates";
+import { mediaKind, formatSize, type MediaKind } from "@/utils/media";
+import { validateCaseFileSize } from "@/utils/caseFileSize";
+import { CaseFileSizeIndicator } from "@/components/common/CaseFileSizeIndicator";
 
 const EMPTY_REPORTER: PersonData = {
     fullName: "",
@@ -29,20 +32,6 @@ const EMPTY_REPORTER: PersonData = {
     note: "",
     images: [],
 };
-type MediaKind = "image" | "video" | "audio" | "document";
-
-function mediaKind(f: File): MediaKind {
-    if (f.type.startsWith("image/")) return "image";
-    if (f.type.startsWith("video/")) return "video";
-    if (f.type.startsWith("audio/")) return "audio";
-    return "document";
-}
-
-function formatSize(bytes: number): string {
-    if (bytes >= 1024 * 1024) return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
-    if (bytes >= 1024) return `${(bytes / 1024).toFixed(1)} KB`;
-    return `${bytes} B`;
-}
 
 type ReporterCardProps = {
     reporter: PersonData;
@@ -71,6 +60,7 @@ function ReporterCard({
     showRemove,
 }: ReporterCardProps) {
     const { t } = useTranslation(["cases", "common"]);
+    const { caseData } = useCase();
     const fileInputRef = useRef<HTMLInputElement>(null);
     const [previewUrls, setPreviewUrls] = useState<string[]>([]);
 
@@ -88,25 +78,22 @@ function ReporterCard({
         };
     }, [reporter.images]);
 
-    // ✅ بيقبل صور + فيديو + صوت + مستندات مع حماية الحجم
+  // ✅ Global case-level 200 MB limit validation
     function handleImagesChange(e: ChangeEvent<HTMLInputElement>): void {
         const files = e.target.files;
         if (files && files.length > 0) {
-            const arr: File[] = [];
-            for (let i = 0; i < files.length; i++) {
-                const f = files[i];
-                const kind = mediaKind(f);
-                const limit = kind === "image" ? 25 * 1024 * 1024 : 150 * 1024 * 1024;
-                if (f.size > limit) {
-                    toast.error(t(`cases:messages.${kind === 'image' ? 'fileTooLargeImage' : 'fileTooLargeOther'}`, {
-                        name: f.name,
-                        defaultValue: `"${f.name}" ${kind === 'image' ? 'is too large — max 25MB.' : 'is too large — max 150MB.'}`
-                    }));
-                    continue;
-                }
-                arr.push(f);
+            const newFiles = Array.from(files);
+            
+            // Validate against global case limit (200 MB total)
+            const validation = validateCaseFileSize(caseData, newFiles);
+            
+            if (!validation.isValid) {
+                toast.error(validation.errorMessage || "تجاوز الحد الأقصى للملفات");
+                if (fileInputRef.current) fileInputRef.current.value = "";
+                return;
             }
-            if (arr.length > 0) onAddImages(arr);
+            
+            onAddImages(newFiles);
         }
         if (fileInputRef.current) fileInputRef.current.value = "";
     }
@@ -465,6 +452,7 @@ export default function CaseInfo() {
         <div className={`min-h-full ${isRtl ? "text-right font-[system-ui]" : ""}`}>
             <Toaster position={isRtl ? "top-left" : "top-right"} />
             <div className="mx-auto w-full max-w-6xl pb-6 px-3 sm:px-4 md:px-6 lg:pb-10">
+                <CaseFileSizeIndicator />
                 <div className="mb-4 sm:mb-6">
                     <h1 className="text-lg sm:text-xl md:text-2xl font-bold tracking-tight text-[#0f2942]">
                         {t("cases:steps.criminal.step1Title")}

@@ -26,23 +26,11 @@ import { z } from "zod";
 import { useCase } from "@/context/CaseContext";
 import type { CorpsesSpecifications as CorpsesSpecsType } from "@/context/CaseContext";
 import type { ZodFormattedError } from "zod";
+import { mediaKind, formatSize, type MediaKind } from "@/utils/media";
+import { validateCaseFileSize } from "@/utils/caseFileSize";
+import { CaseFileSizeIndicator } from "@/components/common/CaseFileSizeIndicator";
 
 // ================= ✅ نوع الوسيط =================
-
-type MediaKind = "image" | "video" | "audio" | "document";
-
-function mediaKind(f: File): MediaKind {
-  if (f.type.startsWith("image/")) return "image";
-  if (f.type.startsWith("video/")) return "video";
-  if (f.type.startsWith("audio/")) return "audio";
-  return "document";
-}
-
-function formatSize(bytes: number): string {
-  if (bytes >= 1024 * 1024) return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
-  if (bytes >= 1024) return `${(bytes / 1024).toFixed(0)} KB`;
-  return `${bytes} B`;
-}
 
 const corpsesSpecsSchema = z.object({
   gender: z.string().optional(),
@@ -229,6 +217,7 @@ function CorpseCard({
   showRemove,
 }: CorpseCardProps) {
   const { t } = useTranslation(["cases", "common"]);
+  const { caseData } = useCase();
   const fileInputRef = useRef<HTMLInputElement>(null);
   const [previewUrls, setPreviewUrls] = useState<string[]>([]);
 
@@ -247,24 +236,22 @@ function CorpseCard({
     return !!errFor(errors, key);
   }
 
-  // ✅ بيقبل صور + فيديو + صوت + مستندات مع حماية الحجم
+  // ✅ Global case-level 200 MB limit validation
   function handleImagesChange(e: ChangeEvent<HTMLInputElement>): void {
     const files = e.target.files;
     if (files && files.length > 0) {
-      const arr: File[] = [];
-      for (let i = 0; i < files.length; i++) {
-        const f = files[i];
-        const kind = mediaKind(f);
-        const limit = kind === "image" ? 25 * 1024 * 1024 : 150 * 1024 * 1024;
-        if (f.size > limit) {
-          toast.error(`"${f.name}" كبير جدًا — الحد الأقصى ${kind === "image" ? 25 : 150}MB.`);
-          continue;
-        }
-        arr.push(f);
+      const newFiles = Array.from(files);
+      
+      // Validate against global case limit (200 MB total)
+      const validation = validateCaseFileSize(caseData, newFiles);
+      
+      if (!validation.isValid) {
+        toast.error(validation.errorMessage || "تجاوز الحد الأقصى للملفات");
+        if (fileInputRef.current) fileInputRef.current.value = "";
+        return;
       }
-      if (arr.length > 0) {
-        onAddImages(arr);
-      }
+      
+      onAddImages(newFiles);
     }
     if (fileInputRef.current) fileInputRef.current.value = "";
   }
@@ -878,6 +865,7 @@ export default function CorpsesSpecifications() {
     <div className="min-h-full">
       <Toaster position="top-right" />
       <div className="mx-auto w-full max-w-5xl pb-6 px-3 sm:px-4 md:px-6 lg:pb-10">
+        <CaseFileSizeIndicator />
         <div className="mb-5 sm:mb-7 flex items-start justify-between">
           <div>
             <div className="flex items-center gap-2 sm:gap-3">
@@ -887,9 +875,7 @@ export default function CorpsesSpecifications() {
               </div>
               <h1 className="text-xl sm:text-2xl md:text-3xl font-bold tracking-tight text-[#0f2942]">
                 {t("cases:steps.corpses.step2Title")}
-                <span className="text-base sm:text-lg md:text-xl font-normal text-[#64748b]">
-                  (الخطوة الثانية: مواصفات الجثث)
-                </span>
+                
               </h1>
             </div>
             <p className="mt-2 text-xs sm:text-sm text-[#64748b]">
