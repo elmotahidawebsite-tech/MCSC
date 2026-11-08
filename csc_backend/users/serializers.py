@@ -6,6 +6,19 @@ from .models import User
 from .models import User
 
 
+class LogoutRequestSerializer(serializers.Serializer):
+    refresh = serializers.CharField()
+
+
+class MessageResponseSerializer(serializers.Serializer):
+    detail = serializers.CharField()
+
+
+class HealthCheckResponseSerializer(serializers.Serializer):
+    status = serializers.ChoiceField(choices=("healthy", "unhealthy"))
+    checks = serializers.DictField(child=serializers.CharField())
+
+
 class MeSerializer(serializers.ModelSerializer):
     class Meta:
         model = User

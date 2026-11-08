@@ -1,9 +1,15 @@
 """
 Django settings for CSC (Crime Scene Collector) project - MVP.
 """
+import logging
 import os
 from datetime import timedelta
 from pathlib import Path
+from decouple import config, Csv
+import secrets
+
+
+logger = logging.getLogger("csc")
 
 BASE_DIR = Path(__file__).resolve().parent.parent
 
@@ -18,6 +24,7 @@ INSTALLED_APPS = [
     "django.contrib.sessions",
     "django.contrib.messages",
     "django.contrib.staticfiles",
+    'rest_framework_simplejwt.token_blacklist',  # ✅ SEC-003: JWT Blacklisting
     # third party
     "rest_framework",
     "rest_framework_simplejwt",
@@ -63,6 +70,24 @@ TEMPLATES = [
 
 WSGI_APPLICATION = "config.wsgi.application"
 
+# =============================================================================
+# CACHES - Required for Rate Limiting (SEC-002)
+# =============================================================================
+CACHES = {
+    'default': {
+        'BACKEND': 'django.core.cache.backends.locmem.LocMemCache',
+        'LOCATION': 'mcsc-rate-limit-cache',
+    }
+}
+
+# ⚠️ في الإنتاج مع أكتر من Gunicorn worker، استخدم Redis بدلًا من الذاكرة المحلية:
+# CACHES = {
+#     'default': {
+#         'BACKEND': 'django.core.cache.backends.redis.RedisCache',
+#         'LOCATION': config('REDIS_URL', default='redis://127.0.0.1:6379/1'),
+#     }
+# }
+
 # --- Database ---
 # MVP: SQLite by default so it runs with zero setup.
 # Switch to PostgreSQL by setting these env vars (see .env.example).
@@ -95,6 +120,7 @@ STATIC_URL = "static/"
 MEDIA_URL = "/media/"
 MEDIA_ROOT = BASE_DIR / "media"
 
+
 DEFAULT_AUTO_FIELD = "django.db.models.BigAutoField"
 multiple_upload = os.environ.get("MULTIPLE_UPLOAD", "True") == "True"
 # --- DRF ---
@@ -112,21 +138,156 @@ REST_FRAMEWORK = {
         "rest_framework.filters.SearchFilter",
     ),
     "DEFAULT_SCHEMA_CLASS": ("drf_spectacular.openapi.AutoSchema"),
+    # ✅ SEC-002: Rate Limiting
+    'DEFAULT_THROTTLE_CLASSES': [
+        'rest_framework.throttling.AnonRateThrottle',
+        'rest_framework.throttling.UserRateThrottle',
+    ],
+    'DEFAULT_THROTTLE_RATES': {
+        'anon': '100/hour',       # الزوار المجهولين: 100 طلب/ساعة
+        'user': '1000/hour',      # المستخدمين: 1000 طلب/ساعة
+        'login': '5/minute',      # تسجيل الدخول: 5 محاولات/دقيقة
+    },
 }
 
 SPECTACULAR_SETTINGS = {
     "TITLE": "CSC API",
     "DESCRIPTION": "Crime Scene Collector (CSC) API for the MVP.",
     "VERSION": "1.0.0",
+    "ENUM_NAME_OVERRIDES": {
+        "CaseStatusEnum": [("draft", "Draft"), ("submitted", "Submitted")],
+        "SyncRecordStatusEnum": [
+            ("synced", "Synced"),
+            ("conflict", "Conflict"),
+            ("error", "Error"),
+        ],
+        "PersonRoleEnum": [
+            ("victim", "Victim"),
+            ("suspect", "Suspect"),
+            ("reporter", "Reporter"),
+        ],
+        "UserRoleEnum": [
+            ("officer", "Officer"),
+            ("admin", "Admin"),
+            ("support", "Support"),
+        ],
+    },
 }
 
+# =============================================================================
+# JWT SETTINGS - SEC-003: Short-lived tokens + blacklisting
+# =============================================================================
+
+# ✅ تأكد إن SIGNING_KEY دايمًا ليه قيمة (مش None)
+_jwt_signing_key = config('JWT_SIGNING_KEY', default=None)
+if not _jwt_signing_key:
+    # لو مفيش مفتاح JWT منفصل، استخدم SECRET_KEY
+    _jwt_signing_key = SECRET_KEY
+
+# ✅ لو لسه فاضي (مستحيل بس احتياط)، استخدم قيمة آمنة
+if not _jwt_signing_key:
+    if DEBUG:
+        _jwt_signing_key = "dev-jwt-" + secrets.token_urlsafe(40)
+        logger.warning("Generated temporary JWT_SIGNING_KEY for development")
+    else:
+        raise RuntimeError("❌ CRITICAL: JWT_SIGNING_KEY or SECRET_KEY must be set!")
+
 SIMPLE_JWT = {
-    "ACCESS_TOKEN_LIFETIME": timedelta(hours=8),
-    "REFRESH_TOKEN_LIFETIME": timedelta(days=7),
-    "ROTATE_REFRESH_TOKENS": True,
+    # ✅ مدة التوكنات قصيرة
+    'ACCESS_TOKEN_LIFETIME': timedelta(minutes=15),   # بدل 8 ساعات
+    'REFRESH_TOKEN_LIFETIME': timedelta(days=1),      # بدل 7 أيام
+    
+    # ✅ تدوير التوكنات
+    'ROTATE_REFRESH_TOKENS': True,
+    'BLACKLIST_AFTER_ROTATION': True,
+    
+    # ✅ أمان إضافي
+    'UPDATE_LAST_LOGIN': True,
+    'CHECK_USER_IS_ACTIVE': True,
+    
+    # ✅ مفتاح التوقيع (مضمون مش فاضي)
+    'SIGNING_KEY': _jwt_signing_key,
+    
+    # باقي الإعدادات الافتراضية
+    'AUTH_HEADER_TYPES': ('Bearer',),
+    'USER_ID_FIELD': 'id',
+    'USER_ID_CLAIM': 'user_id',
+    'AUTH_TOKEN_CLASSES': ('rest_framework_simplejwt.tokens.AccessToken',),
 }
 
 # --- CORS (MVP: open for local frontend dev, tighten later) ---
 CORS_ALLOWED_ORIGINS = os.environ.get(
     "CORS_ALLOWED_ORIGINS", "http://localhost:5173,http://192.168.1.2:5173,https://csc-frontend-self.vercel.app"
 ).split(",")
+
+# =============================================================================
+# LOGGING - OPS-004: تسجيل مركزي (ملفين: info + error)
+# =============================================================================
+LOGS_DIR = BASE_DIR / "logs"
+LOGS_DIR.mkdir(parents=True, exist_ok=True)
+
+LOGGING = {
+    "version": 1,
+    "disable_existing_loggers": False,
+
+    "formatters": {
+        "verbose": {
+            "format": "[{asctime}] {levelname:<8} {name}:{lineno} - {message}",
+            "style": "{",
+        },
+    },
+
+    "handlers": {
+        "console": {
+            "class": "logging.StreamHandler",
+            "formatter": "verbose",
+        },
+        # ملف يومي لكل الأحداث
+        "info_file": {
+            "class": "logging.handlers.TimedRotatingFileHandler",
+            "filename": str(LOGS_DIR / "info.log"),
+            "when": "midnight",          # يلف كل نص ليل
+            "interval": 1,               # كل 1 يوم
+            "backupCount": 30,           # يحتفظ بـ 30 يوم
+            "formatter": "verbose",
+            "encoding": "utf-8",
+            "level": "INFO",
+        },
+        # ملف يومي للأخطاء بس
+        "error_file": {
+            "class": "logging.handlers.TimedRotatingFileHandler",
+            "filename": str(LOGS_DIR / "error.log"),
+            "when": "midnight",
+            "interval": 1,
+            "backupCount": 90,           # الأخطاء نحتفظ بيها 90 يوم
+            "formatter": "verbose",
+            "encoding": "utf-8",
+            "level": "ERROR",
+        },
+    },
+    "root": {
+        "handlers": ["console", "info_file", "error_file"],
+        "level": "WARNING",
+    },
+
+    "loggers": {
+        # اللوجز بتاعتنا (اللي هنكتبها بـ logger.info / logger.error)
+        "csc": {
+            "handlers": ["console", "info_file", "error_file"],
+            "level": "INFO",
+            "propagate": False,
+        },
+        # طلبات Django الفاشلة (4xx = WARNING، 5xx = ERROR)
+        "django.request": {
+            "handlers": ["info_file", "error_file"],
+            "level": "WARNING",
+            "propagate": False,
+        },
+        # أحداث الأمان (محاولات اختراق، CSRF فاشل...)
+        "django.security": {
+            "handlers": ["info_file", "error_file"],
+            "level": "WARNING",
+            "propagate": False,
+        },
+    },
+}

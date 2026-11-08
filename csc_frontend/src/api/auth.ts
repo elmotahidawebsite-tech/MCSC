@@ -13,12 +13,28 @@ export async function login(data: LoginRequest): Promise<LoginResponse> {
   return response.data;
 }
 
-export function logout() {
-  localStorage.removeItem("access");
-  localStorage.removeItem("refresh");
+
+export const logout = async (): Promise<void> => {
+  const refreshToken = localStorage.getItem('refresh');
+  
+  // ✅ SEC-003: ابعت الـ refresh token للسيرفر عشان يتسحب
+  if (refreshToken) {
+    try {
+      await api.post('/api/auth/logout/', {
+        refresh: refreshToken,
+      });
+    } catch (error) {
+      // لو فشل السحب، نكمل ونمسح من المتصفح برضه
+      console.warn('Failed to blacklist token on server:', error);
+    }
+  }
+  
+  // امسح التوكنات من المتصفح
+  localStorage.removeItem('access');
+  localStorage.removeItem('refresh');
   localStorage.removeItem("stationId");
   localStorage.removeItem("csc_offline_user");
-}
+};
 
 export async function fetchMe(): Promise<User> {
   const response = await api.get<User>("/auth/me/");

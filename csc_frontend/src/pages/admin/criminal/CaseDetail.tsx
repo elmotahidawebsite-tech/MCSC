@@ -205,12 +205,16 @@ export default function AdminCaseDetail() {
             (b.images || []).map((img: any) => ({
               url: img.thumbnail || img.image || "",
               id: img.id,
+              media_type: img.media_type,
+              file_name: img.file_name,
             })).filter((x: any) => x.url)
           );
 
           const caseImages = (c.images || []).map((img: any) => ({
             url: img.thumbnail || img.image || "",
             id: img.id,
+            media_type: img.media_type,
+            file_name: img.file_name,
           })).filter((x: any) => x.url);
 
           const newRemoteImages: RemoteImages = {
@@ -218,24 +222,32 @@ export default function AdminCaseDetail() {
               (p.images || []).map((img: any) => ({
                 url: img.thumbnail || img.image || "",
                 id: img.id,
+                media_type: img.media_type,
+                file_name: img.file_name,
               })).filter((x: any) => x.url)
             ),
             suspects: suspects.map((p) =>
               (p.images || []).map((img: any) => ({
                 url: img.thumbnail || img.image || "",
                 id: img.id,
+                media_type: img.media_type,
+                file_name: img.file_name,
               })).filter((x: any) => x.url)
             ),
             reporters: reporters.map((p) =>
               (p.images || []).map((img: any) => ({
                 url: img.thumbnail || img.image || "",
                 id: img.id,
+                media_type: img.media_type,
+                file_name: img.file_name,
               })).filter((x: any) => x.url)
             ),
             evidences: evidences.map((e) =>
               (e.media || []).map((m: any) => ({
                 url: m.thumbnail || m.file || "",
                 id: m.id,
+                media_type: m.media_type,
+                file_name: m.file_name,
               })).filter((x: any) => x.url)
             ),
             corpseImages: corpseImagesList,
