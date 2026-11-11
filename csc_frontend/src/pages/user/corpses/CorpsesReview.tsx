@@ -492,13 +492,11 @@ export default function CorpsesReview() {
         toast.error(t("cases:review.downloadFailed"));
       }
 
-      // Navigate immediately with replace to avoid context issues
-      navigate("/user/dashboard", { replace: true });
-      
-      // Reset case after a small delay to ensure navigation completes
+      // تأخير الانتقال لمدة 2 ثانية علشان المستخدم يشوف رسالة النجاح
       setTimeout(() => {
         resetCase();
-      }, 300);
+        navigate("/user/dashboard", { replace: true });
+      }, 2000);
     } catch (e) {
       console.error(e);
       toast.error(

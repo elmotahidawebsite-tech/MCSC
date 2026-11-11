@@ -217,7 +217,7 @@ SIMPLE_JWT = {
 
 # --- CORS (MVP: open for local frontend dev, tighten later) ---
 CORS_ALLOWED_ORIGINS = os.environ.get(
-    "CORS_ALLOWED_ORIGINS", "http://localhost:5173,http://192.168.1.2:5173,https://csc-frontend-self.vercel.app"
+    "CORS_ALLOWED_ORIGINS", "http://localhost:5173,http://192.168.1.25:5173"
 ).split(",")
 
 # =============================================================================
