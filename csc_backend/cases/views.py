@@ -152,18 +152,61 @@ def _detect_mime(header: bytes) -> str | None:
     return None
 
 
-def _media_file_fields(upload, raw: bytes, media_type: str):
-    compressed, thumbnail = make_image_versions(raw) if media_type == MediaType.IMAGE else (b"", b"")
+from django.core.files.uploadedfile import UploadedFile
+from typing import Optional
+
+def _process_image_versions(file_obj: UploadedFile) -> tuple[Optional[bytes], Optional[bytes]]:
+    """
+    B3/E8: يعالج الصور من الملف نفسه (streaming) بدون تحميل كامل في RAM.
+    بيرجع (compressed_bytes, thumbnail_bytes) أو (None, None) لو مش صورة.
+    """
+    try:
+        from PIL import Image as PILImage
+        # PIL بيقدر يفتح من file-like object (streaming-friendly)
+        img = PILImage.open(file_obj).convert("RGB")
+        
+        # Reset position عشان نقدر نعيد القراءة لو احتجنا
+        file_obj.seek(0)
+        
+        if img.width > 1280:
+            ratio = 1280 / img.width
+            large = img.resize((1280, int(img.height * ratio)), PILImage.LANCZOS)
+        else:
+            large = img
+            
+        buf_compressed = BytesIO()
+        large.save(buf_compressed, format="JPEG", quality=80)
+        compressed = buf_compressed.getvalue()
+        
+        ratio_thumb = 256 / img.width
+        thumb = img.resize((256, int(img.height * ratio_thumb)), PILImage.LANCZOS)
+        buf_thumb = BytesIO()
+        thumb.save(buf_thumb, format="JPEG", quality=70)
+        thumbnail = buf_thumb.getvalue()
+        
+        return compressed, thumbnail
+    except Exception:
+        return None, None
+
+
+def _media_file_fields_streaming(upload: UploadedFile, media_type: str) -> dict:
+    """
+    B3/E8: يبني حقول الملفات بدون قراءة upload.raw بالكامل في RAM.
+    - file: يستخدم upload مباشرة (Django handles temp storage automatically)
+    - compressed/thumbnail: يتعالجان من خلال _process_image_versions (streaming-safe)
+    """
     base_name = os.path.splitext(os.path.basename(upload.name))[0]
-    return {
-        "file": ContentFile(raw, name=upload.name),
-        "compressed_file": (
-            ContentFile(compressed, name=f"{base_name}_compressed.jpg") if compressed else None
-        ),
-        "thumbnail_file": (
-            ContentFile(thumbnail, name=f"{base_name}_thumbnail.jpg") if thumbnail else None
-        ),
-    }
+    
+    result = {"file": upload}  # ← Django stores to temp disk automatically
+    
+    if media_type == MediaType.IMAGE:
+        compressed, thumbnail = _process_image_versions(upload)
+        if compressed:
+            result["compressed_file"] = ContentFile(compressed, name=f"{base_name}_compressed.jpg")
+        if thumbnail:
+            result["thumbnail_file"] = ContentFile(thumbnail, name=f"{base_name}_thumbnail.jpg")
+            
+    return result
 
 
 def _write_media_to_zip(zip_file, path: str, media_file):
@@ -195,6 +238,24 @@ def _get_case_total_size(case):
     return total
 
 
+import re as _re
+
+def _sanitize_zip_component(name: str) -> str:
+    """
+    #38 (B1): ينظّف مكوّن مسار ZIP — شيل /, \, .., والبادئة المطلقة.
+    بيُطبَّق على file_name قبل اللحاقه بمسار writestr.
+    """
+    if not name:
+        return "unnamed"
+    # شيل أي path separators و ..
+    name = name.replace("\\", "_").replace("/", "_")
+    name = _re.sub(r'\.\.+', '_', name)
+    # شيل الأحرف اللي بتكسر المسار (نفس نمط safe_name)
+    name = _re.sub(r'[^\w\s.\-]', '_', name)
+    name = _re.sub(r'[-\s]+', '_', name).strip('._')
+    # حد الطول (ZIP specs: 255 bytes per component)
+    return name[:200] or "unnamed"
+    
 # ===================== Mixin موحد للوسائط =====================
 
 class MediaViewSetMixin:
@@ -258,6 +319,7 @@ class MediaViewSetMixin:
             )
 
         return f, mt, None
+    
     @action(detail=True, methods=["get"], url_path="download")
     def download_file(self, request, pk=None):
         obj = self.get_object()
@@ -667,7 +729,8 @@ class CaseViewSet(viewsets.ModelViewSet):
                 safe_name = re.sub(r'[^\w\s-]', '_', person.full_name or "unknown").strip()
                 safe_name = re.sub(r'[-\s]+', '_', safe_name)
                 for img in person.images.all():
-                    name = img.file_name or f"{person.code}.jpg"
+                    raw_name = img.file_name or f"{person.code}.jpg"
+                    name = _sanitize_zip_component(raw_name)
                     _write_media_to_zip(
                         zipf,
                         f"Images/{person.role.capitalize()}s/{safe_name}/{img.id}_{name}",
@@ -678,7 +741,7 @@ class CaseViewSet(viewsets.ModelViewSet):
                 # ✅ رقم + كود = اسم فولدر فريد 100%
                 folder_name = f"{idx:02d}_{ev.evidence_code}"
                 for m in ev.media.all():
-                    name = m.file_name or f"{ev.evidence_code}.bin"
+                    name = _sanitize_zip_component(m.file_name or f"{ev.evidence_code}.bin")
                     _write_media_to_zip(
                         zipf,
                         f"Images/Evidence/{folder_name}/{m.id}_{name}",
@@ -686,7 +749,7 @@ class CaseViewSet(viewsets.ModelViewSet):
                     )
 
             for cim in case_images:
-                name = cim.file_name or f"case_{case.case_code}.jpg"
+                name = _sanitize_zip_component(cim.file_name or f"case_{case.case_code}.jpg")
                 _write_media_to_zip(
                     zipf,
                     f"Images/CaseImages/{case.case_code}/{cim.id}_{name}",
@@ -695,7 +758,7 @@ class CaseViewSet(viewsets.ModelViewSet):
 
             for b in bodies:
                 for bim in b.images.all():
-                    name = bim.file_name or f"{b.code}.jpg"
+                    name = _sanitize_zip_component(bim.file_name or f"{b.code}.jpg")
                     _write_media_to_zip(
                         zipf,
                         f"Images/Bodies/{b.code}/{bim.id}_{name}",
@@ -1012,7 +1075,7 @@ class PersonImageViewSet(MediaViewSetMixin, viewsets.ModelViewSet):
         f, mt, err = self.read_media_upload(request, person.case)  # ← person.case
         if err:
             return err
-        raw = f.read()
+
         obj = PersonImage.objects.create(
             person=person,
             file_name=f.name,
@@ -1084,7 +1147,7 @@ class EvidenceMediaViewSet(MediaViewSetMixin, viewsets.ModelViewSet):
         f, mt, err = self.read_media_upload(request, evidence.case)  # ← evidence.case
         if err:
             return err
-        raw = f.read()
+        
         obj = EvidenceMedia.objects.create(
             evidence=evidence,
             file_name=f.name,
@@ -1178,7 +1241,7 @@ class BodyImageViewSet(MediaViewSetMixin, viewsets.ModelViewSet):
         f, mt, err = self.read_media_upload(request, body.case)  # ← body.case
         if err:
             return err
-        raw = f.read()
+        
         obj = BodyImage.objects.create(
             body=body,
             file_name=f.name,
@@ -1217,7 +1280,7 @@ class CaseImageViewSet(MediaViewSetMixin, viewsets.ModelViewSet):
         f, mt, err = self.read_media_upload(request, case)  # ← case مباشرة
         if err:
             return err
-        raw = f.read()
+        
         obj = CaseImage.objects.create(
             case=case,
             file_name=f.name,

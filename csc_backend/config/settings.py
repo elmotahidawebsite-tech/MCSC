@@ -5,7 +5,8 @@ import logging
 import os
 from datetime import timedelta
 from pathlib import Path
-from decouple import config, Csv
+from decouple import config
+from django.core.exceptions import ImproperlyConfigured  # E2/E3: للحارس
 import secrets
 
 
@@ -13,10 +14,40 @@ logger = logging.getLogger("csc")
 
 BASE_DIR = Path(__file__).resolve().parent.parent
 
-SECRET_KEY = os.environ.get("DJANGO_SECRET_KEY", "dev-only-change-me")
-DEBUG = os.environ.get("DJANGO_DEBUG", "True") == "True"
-# ALLOWED_HOSTS = os.environ.get("DJANGO_ALLOWED_HOSTS","http://192.168.1.2:5173","https://csc-frontend-self.vercel.app").split(",")
-ALLOWED_HOSTS = ["*"]
+# ── B0 env-contract (E1–E4) ──────────────────────────────────────────────
+# الغرض: لا سر/مضيف/وضع debug مٌقسّى. على VPS مكشوف التلاتة بيحددوا هل
+#   يتزوَّر الـ Host (E1)، يتسرَّب traceback (E2)، أو يُزوَّر JWT أدمن (E3).
+# الملفات_related: .env (محلي DEBUG=True / سيرفر DEBUG=False)، 📗 5.1
+#   DB_* — التبديل dev↔prod = تغيير env بس، صفر تعديل كود.
+
+# E3: بلا fallback — لو مش متظبط، الحارس تحت هيرفض الإقلاع (مش هيشتغل بالسر الافتراضي)
+SECRET_KEY = os.environ.get("DJANGO_SECRET_KEY")
+
+# E2: الافتراضي False (الوضع الآمن هو الافتراضي)، مش True
+DEBUG = os.environ.get("DJANGO_DEBUG", "False").strip().lower() in ("1", "true", "yes")
+
+# E1: من env، مش "*" — فاصل/فراغ بيتشال
+#   ⚠️ وإصلاح bug: os.environ.get بياخد 2 args بس؛ السطر المعلّق القديم كان
+#   بيحط 3 (مفتاح + 2 default) => لو اتفك كان هيرمي TypeError. هنا القراءة صح.
+ALLOWED_HOSTS = [
+    h.strip()
+    for h in os.environ.get("DJANGO_ALLOWED_HOSTS", "").split(",")
+    if h.strip()
+]
+
+
+# E2/E3 guard: إنتاج (DEBUG=False) من غير سر = إقلاع ممنوع
+if not DEBUG and not SECRET_KEY:
+    raise ImproperlyConfigured(
+        "DJANGO_SECRET_KEY مطلوب لما DJANGO_DEBUG=False — متشغّلش الإنتاج بالسر الافتراضي."
+    )
+
+# E3-dev: في التطوير (DEBUG=True) من غير سر → ولّد مؤقت عشان Django نفسه يحتاجه
+# (مش fallback ثابت زي قبل — ده value عشوائي per-process، ما يتسرّبش ولا يتكرر)
+if DEBUG and not SECRET_KEY:
+    SECRET_KEY = "dev-only-" + secrets.token_urlsafe(50)
+    logger.warning("⚠️ SECRET_KEY مؤقت للتطوير فقط — حط DJANGO_SECRET_KEY في .env المحلي")
+
 INSTALLED_APPS = [
     "django.contrib.admin",
     "django.contrib.auth",
@@ -216,9 +247,14 @@ SIMPLE_JWT = {
 }
 
 # --- CORS (MVP: open for local frontend dev, tighten later) ---
-CORS_ALLOWED_ORIGINS = os.environ.get(
-    "CORS_ALLOWED_ORIGINS", "http://localhost:5173,http://192.168.1.25:5173"
-).split(",")
+# --- CORS (E4: الافتراضي فاضي؛ النطاقات المنشورة من env) ---
+# ملاحظة: الفرونت هيخدم من نفس الـ domain خلف Caddy (same-origin)، فـ CORS
+# غالباً مش مطلوب في prod. بس env-switchable للاحتياط ولأي dev منفصل.
+CORS_ALLOWED_ORIGINS = [
+    o.strip()
+    for o in os.environ.get("CORS_ALLOWED_ORIGINS", "").split(",")
+    if o.strip()
+]
 
 # =============================================================================
 # LOGGING - OPS-004: تسجيل مركزي (ملفين: info + error)

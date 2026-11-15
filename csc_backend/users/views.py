@@ -140,22 +140,28 @@ class HealthCheckView(APIView):
             with connection.cursor() as cursor:
                 cursor.execute("SELECT 1")
             checks["database"] = "ok"
-        except Exception as e:
+        except Exception:
+            # E5: التفاصيل (host/SQL/path) تروح للّوج فقط (exc_info=True).
+            #     الـ endpoint عام (AllowAny)، فأي str(e) في الرد = recon.
+            #     الرد يُظهر "error" بلا سبب — المشرف يعرف أي مكوّن وقع من الـ key.
             logger.error("health_check_database_failed", exc_info=True)
-            checks["database"] = f"error: {e}"
+            checks["database"] = "error"
             healthy = False
 
         # 2) فحص مجلد الـ media (موجود + قابل للكتابة)
+        #    ⚠️ watch (📗 5.1): ده بيفترض تخزين محلي (MEDIA_ROOT). لما
+        #    STORAGE_BACKEND=s3 (transition للمركز/MinIO) لازم الفرع ده يتبدّل
+        #    لفحص الـ bucket بدل os.access — متسيبوش hardcoded local للأبد.
         try:
             media_root = Path(settings.MEDIA_ROOT)
             if media_root.exists() and os.access(media_root, os.W_OK):
                 checks["media"] = "ok"
             else:
-                checks["media"] = "error: missing or not writable"
+                checks["media"] = "error"   # E5: نص ثابت عام بدل تسريب حالة المسار
                 healthy = False
-        except Exception as e:
+        except Exception:
             logger.error("health_check_media_failed", exc_info=True)
-            checks["media"] = f"error: {e}"
+            checks["media"] = "error"        # E5: بلا {e}
             healthy = False
 
         return Response(

@@ -25,58 +25,55 @@ class MediaType(models.TextChoices):
 
 def generate_case_code():
     """C-2026-0001 — آمن ضد التزامن"""
-    from django.db import transaction
-    with transaction.atomic():
-        year = datetime.now().year
-        prefix = f"C-{year}-"
-        # ✅ قفل الصفوف عشان مفيش حد تاني يحسب في نفس الوقت
-        last = Case.objects.filter(
-            case_code__startswith=prefix
-        ).select_for_update().order_by('-case_code').first()
+    
+    year = datetime.now().year
+    prefix = f"C-{year}-"
+    # ✅ قفل الصفوف عشان مفيش حد تاني يحسب في نفس الوقت
+    last = Case.objects.filter(
+        case_code__startswith=prefix
+    ).select_for_update().order_by('-case_code').first()
 
-        if last:
-            seq = int(last.case_code.split('-')[-1]) + 1
-        else:
-            seq = 1
+    if last:
+        seq = int(last.case_code.split('-')[-1]) + 1
+    else:
+        seq = 1
 
-        return f"{prefix}{seq:04d}"
+    return f"{prefix}{seq:04d}"
 
 
 def generate_person_code():
     """REC-00001 — آمن ضد التزامن"""
-    from django.db import transaction
-    with transaction.atomic():
-        last = Person.objects.select_for_update().order_by('-code').first()
-        if last:
-            seq = int(last.code.split('-')[-1]) + 1
-        else:
-            seq = 1
-        return f"REC-{seq:05d}"
+    
+    last = Person.objects.select_for_update().order_by('-code').first()
+    if last:
+        seq = int(last.code.split('-')[-1]) + 1
+    else:
+        seq = 1
+    return f"REC-{seq:05d}"
 
 
 def generate_evidence_code():
     """EV-98234-A — آمن ضد التزامن (transaction + select_for_update + retry)"""
-    from django.db import transaction
+    
     for _ in range(10):  # retry محدود — احتمال التصادم في 2.34 مليون قيمة ضئيل
         code = f"EV-{random.randint(10000, 99999)}-{random.choice(string.ascii_uppercase)}"
-        with transaction.atomic():
-            # .first() بترجع الصف الفعلي (أو None) عشان select_for_update يقفله
-            existing = Evidence.objects.filter(evidence_code=code).select_for_update().first()
-            if existing is None:
-                return code
+        
+        # .first() بترجع الصف الفعلي (أو None) عشان select_for_update يقفله
+        existing = Evidence.objects.filter(evidence_code=code).select_for_update().first()
+        if existing is None:
+            return code
     raise RuntimeError("❌ تعذّر توليد كود دليل فريد بعد 10 محاولات")
 
 
 def generate_body_code():
     """BD-00001 — آمن ضد التزامن"""
-    from django.db import transaction
-    with transaction.atomic():
-        last = Body.objects.select_for_update().order_by('-code').first()
-        if last:
-            seq = int(last.code.split('-')[-1]) + 1
-        else:
-            seq = 1
-        return f"BD-{seq:05d}"
+    
+    last = Body.objects.select_for_update().order_by('-code').first()
+    if last:
+        seq = int(last.code.split('-')[-1]) + 1
+    else:
+        seq = 1
+    return f"BD-{seq:05d}"
 
 # ================= القضية =================
 
@@ -164,9 +161,30 @@ class Case(models.Model):
         ]
 
     def save(self, *args, **kwargs):
+        # #14 (B1): القفل لازم يعيش لحد الـ INSERT — مش يتحرر قبله.
+        # نلفّ التوليد + الحفظ في atomic واحد، فالـ select_for_update جوه
+        # generate_case_code() بيقفل الصف، والقفل ما بيتحررش إلا بعد super().save().
+        # طلب تاني بيستنى (blocked) لحد ما الأول يُدرك الـ INSERT، وبعدين يلاقي
+        # الصف الجديد ويحسب seq+1.
+        #
+        # حالة الجدول الفاضي (أول قضية): مافيش صف يقفل → طلبان بيحسبوا seq=1.
+        # الـ unique=True على case_code بيمسك التصادم → IntegrityError → retry.
+        from django.db import transaction
+        from django.db.utils import IntegrityError
+
         if not self.case_code:
-            self.case_code = generate_case_code()
-        super().save(*args, **kwargs)
+            for _attempt in range(3):  # retry محدود لأول قضية بس
+                try:
+                    with transaction.atomic():
+                        self.case_code = generate_case_code()
+                        super().save(*args, **kwargs)
+                    return  # نجح، اخرج
+                except IntegrityError:
+                    self.case_code = None  # امسح وحاول تاني
+                    continue
+            raise RuntimeError("❌ تعذّر إنشاء case_code فريد بعد 3 محاولات")
+        else:
+            super().save(*args, **kwargs)
 
     def __str__(self):
         return self.case_code
@@ -222,10 +240,23 @@ class Person(models.Model):
     class Meta:
         ordering = ["id"]
 
+    # Person.save — نفس المنطق
     def save(self, *args, **kwargs):
+        from django.db import transaction
+        from django.db.utils import IntegrityError
         if not self.code:
-            self.code = generate_person_code()
-        super().save(*args, **kwargs)
+            for _attempt in range(3):
+                try:
+                    with transaction.atomic():
+                        self.code = generate_person_code()
+                        super().save(*args, **kwargs)
+                    return
+                except IntegrityError:
+                    self.code = None
+                    continue
+            raise RuntimeError("❌ تعذّر إنشاء person code فريد")
+        else:
+            super().save(*args, **kwargs)
 
     @property
     def age(self):
@@ -272,9 +303,13 @@ class Evidence(models.Model):
         ordering = ["id"]
 
     def save(self, *args, **kwargs):
+        from django.db import transaction
         if not self.evidence_code:
-            self.evidence_code = generate_evidence_code()
-        super().save(*args, **kwargs)
+            with transaction.atomic():
+                self.evidence_code = generate_evidence_code()
+                super().save(*args, **kwargs)
+        else:
+            super().save(*args, **kwargs)
 
     def __str__(self):
         return self.evidence_code
@@ -343,10 +378,23 @@ class Body(models.Model):
         ordering = ["id"]
         verbose_name_plural = "bodies"
 
+        # Body.save — نفس Person
     def save(self, *args, **kwargs):
+        from django.db import transaction
+        from django.db.utils import IntegrityError
         if not self.code:
-            self.code = generate_body_code()
-        super().save(*args, **kwargs)
+            for _attempt in range(3):
+                try:
+                    with transaction.atomic():
+                        self.code = generate_body_code()
+                        super().save(*args, **kwargs)
+                    return
+                except IntegrityError:
+                    self.code = None
+                    continue
+            raise RuntimeError("❌ تعذّر إنشاء body code فريد")
+        else:
+            super().save(*args, **kwargs)
 
     def __str__(self):
         return f"{self.code} - Case {self.case.case_code}"

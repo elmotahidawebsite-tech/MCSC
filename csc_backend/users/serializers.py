@@ -26,13 +26,33 @@ class MeSerializer(serializers.ModelSerializer):
 
 
 class CSCTokenObtainPairSerializer(TokenObtainPairSerializer):
-    """Adds role/username into the JWT payload so the frontend can read it immediately."""
+    """
+    Adds role/username into the JWT payload for FRONTEND UI convenience only.
+    
+    ⚠️ #13 (B1): الـ role claim مُجمَّد وقت الإصدار. لو الأدمن غيّر دور المستخدم،
+    التوكن الحيّ (١٥ دقيقة) لسه شايل الدور القديم.
+    
+    الأمان: الـ BACKEND آمن تمامًا — ensure_case_view/edit/get_queryset/get_permissions
+    بتقرا user.role من الـ DB (request.user)، مش من الـ claim. فأي عملية صلاحيات
+    هتُرفض بـ 403/404 حتى لو الفرونت عرض زرار غلط.
+    
+    الإصلاح الكامل (token versioning) يتطلب:
+      1. users/models.py: إضافة token_version = PositiveIntegerField(default=0)
+      2. users/models.py: في save() أو signal: لو role اتغير → token_version += 1
+      3. users/authentication.py: custom JWTAuthentication يقارن claim["tv"] == user.token_version
+      4. هنا: token["tv"] = user.token_version
+    مؤجَّل لـ B4 (قبل التسليم) لأنه يتطلب migration + ملف جديد.
+    
+    للـ beta: الفرونت يستدعي /api/auth/me/ (MeView) بعد login وعلى كل صفحة حساسة،
+    ويستخدم role من الـ response (fresh من DB) مش من فكّ التوكن.
+    """
 
     @classmethod
     def get_token(cls, user):
         token = super().get_token(user)
-        token["role"] = user.role
+        token["role"] = user.role        # UI-only; backend uses DB
         token["username"] = user.username
+        # B4: token["tv"] = user.token_version  (uncomment after model migration)
         return token
 
 

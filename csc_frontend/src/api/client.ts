@@ -1,8 +1,12 @@
 
 import axios, { AxiosError, InternalAxiosRequestConfig } from "axios";
 
-const API_URL =
-  import.meta.env.VITE_API_URL || "http://localhost:8000/api";
+// E10: المشكلة ما كانتش إن فيه fallback، كانت إن قيمة الـ fallback = localhost.
+//      القيمة النسبية "/api" صحيحة في dev (Vite proxy → 8000) وفي prod (Caddy → backend)
+//      بنفس القيمة ⇒ build واحد لكل البيئات، صفر إعادة بناء، وصفر اتصال لـ localhost
+//      في نسخة منشورة. (لو يوم احتجت API على origin منفصل تمامًا، اضبط VITE_API_URL
+//      مطلقًا وقت البناء — بس ده مش تصميمنا single-origin خلف Caddy.)
+const API_URL = import.meta.env.VITE_API_URL || "/api";
 
 export const api = axios.create({
   baseURL: API_URL,
