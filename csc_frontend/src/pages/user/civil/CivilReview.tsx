@@ -151,12 +151,7 @@ export default function CivilReview() {
   );
 
   function validateCase(): string | null {
-    if (!caseFilled) {
-      return t("cases:review.caseEmpty");
-    }
-    if (!info.caseNumber?.trim()) {
-      return t("cases:review.caseNumberRequired");
-    }
+    // No validation required - always allow submission
     return null;
   }
 

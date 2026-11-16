@@ -20,10 +20,7 @@ import {
   X,
 } from "lucide-react";
 import toast, { Toaster } from "react-hot-toast";
-import type { ZodFormattedError } from "zod";
 import { useCase } from "@/context/CaseContext";
-import type { CivilCaseInfo as CivilCaseInfoType } from "@/context/CaseContext";
-import { civilCaseInfoSchema } from "@/schemas/caseSchema";
 import { submitCivilCase } from "@/api/cases";
 import { api } from "@/api/client";
 import { GOVERNORATES_BILINGUAL } from "@/constants/governorates";
@@ -31,30 +28,11 @@ import { mediaKind, formatSize, type MediaKind } from "@/utils/media";
 import { validateCaseFileSize } from "@/utils/caseFileSize";
 import { CaseFileSizeIndicator } from "@/components/common/CaseFileSizeIndicator";
 
-type CivilCaseErrors = ZodFormattedError<CivilCaseInfoType>;
-type CivilCaseKey = keyof CivilCaseInfoType;
+const inputCls = "h-10 sm:h-11 w-full rounded-lg border border-[#dbe5ec] bg-white pl-9 sm:pl-10 pr-3 text-xs sm:text-sm text-[#475569] outline-none placeholder:text-[#64748b] focus:border-[#0089c7] focus:ring-1 focus:ring-[#0089c7]/20 transition";
 
-function errFor(errors: CivilCaseErrors | null, key: CivilCaseKey): string | null {
-  if (!errors) return null;
-  const node = errors[key];
-  if (!node) return null;
-  const errs = (node as { _errors?: string[] })._errors;
-  return Array.isArray(errs) ? errs[0] ?? null : null;
-}
+const selectCls = "h-10 sm:h-11 w-full appearance-none rounded-lg border border-[#dbe5ec] bg-white pl-9 sm:pl-10 pr-10 text-xs sm:text-sm text-[#475569] outline-none placeholder:text-[#64748b] focus:border-[#0089c7] focus:ring-1 focus:ring-[#0089c7]/20 transition";
 
-function FieldError({ msg }: { msg: string | null }) {
-  if (!msg) return null;
-  return <p className="mt-1.5 text-[10px] sm:text-[11px] font-medium text-[#dc2626]">{msg}</p>;
-}
-
-const inputCls = (hasError: boolean) =>
-  `h-10 sm:h-11 w-full rounded-lg border ${hasError ? "border-[#fecaca] ring-1 ring-[#fecaca]" : "border-[#dbe5ec]"} bg-white pl-9 sm:pl-10 pr-3 text-xs sm:text-sm text-[#475569] outline-none placeholder:text-[#64748b] focus:border-[#0089c7] focus:ring-1 focus:ring-[#0089c7]/20`;
-
-const selectCls = (hasError: boolean) =>
-  `h-10 sm:h-11 w-full appearance-none rounded-lg border ${hasError ? "border-[#fecaca] ring-1 ring-[#fecaca]" : "border-[#dbe5ec]"} bg-white pl-9 sm:pl-10 pr-10 text-xs sm:text-sm text-[#475569] outline-none placeholder:text-[#64748b] focus:border-[#0089c7] focus:ring-1 focus:ring-[#0089c7]/20`;
-
-const textareaCls = (hasError: boolean) =>
-  `w-full min-h-[110px] sm:min-h-[130px] resize-y rounded-lg border ${hasError ? "border-[#fecaca] ring-1 ring-[#fecaca]" : "border-[#dbe5ec]"} bg-white pl-9 sm:pl-10 pr-3 py-3 text-xs sm:text-sm text-[#475569] outline-none placeholder:text-[#64748b] focus:border-[#0089c7] focus:ring-1 focus:ring-[#0089c7]/20`;
+const textareaCls = "w-full min-h-[110px] sm:min-h-[130px] resize-y rounded-lg border border-[#dbe5ec] bg-white pl-9 sm:pl-10 pr-3 py-3 text-xs sm:text-sm text-[#475569] outline-none placeholder:text-[#64748b] focus:border-[#0089c7] focus:ring-1 focus:ring-[#0089c7]/20 transition";
 
 const labelCls = "mb-1.5 sm:mb-2 block text-[11px] sm:text-[12px] md:text-[13px] font-bold uppercase tracking-wider text-[#0875a8]";
 const iconWrap = "pointer-events-none absolute left-2.5 sm:left-3 top-1/2 -translate-y-1/2 text-[#64748b]";
@@ -71,7 +49,6 @@ export default function CivilCaseInfo() {
   const { caseData, updateCivilCaseInfo, setCaseType, resetCase } = useCase();
   const data = caseData.civilCaseInfo;
 
-  const [fieldErrors, setFieldErrors] = useState<CivilCaseErrors | null>(null);
   const [submitting, setSubmitting] = useState(false);
 
   const civilImagesFileInputRef = useRef<HTMLInputElement>(null);
@@ -112,26 +89,7 @@ export default function CivilCaseInfo() {
     updateCivilCaseInfo({ images: updated });
   }
 
-  function hasErr(key: CivilCaseKey): boolean {
-    return !!errFor(fieldErrors, key);
-  }
-
   function validateAndSubmit(): void {
-    const res = civilCaseInfoSchema.safeParse(data);
-    if (!res.success) {
-      const formatted = res.error.format() as CivilCaseErrors;
-      setFieldErrors(formatted);
-      const keys = Object.keys(formatted).filter((k) => k !== "_errors") as CivilCaseKey[];
-      const firstKey = keys.find((k) => (formatted[k] as { _errors?: string[] })?._errors?.length);
-      if (firstKey) {
-        const firstMsg = (formatted[firstKey] as { _errors: string[] })._errors[0] ?? t("cases:validation.checkHighlighted");
-        toast.error(firstMsg);
-      } else {
-        toast.error(t("cases:validation.fixErrorsBefore"));
-      }
-      return;
-    }
-    setFieldErrors(null);
     handleSubmit();
   }
 
@@ -187,64 +145,57 @@ export default function CivilCaseInfo() {
 
             <div className="grid grid-cols-1 gap-x-4 gap-y-4 sm:gap-x-6 sm:gap-y-5 md:grid-cols-2 md:gap-x-8 md:gap-y-6">
               <div>
-                <label className={labelCls}>{t("cases:civil.caseNumber")} <span className="text-[#dc2626]">*</span></label>
+                <label className={labelCls}>{t("cases:civil.caseNumber")}</label>
                 <div className="relative">
                   <div className={iconWrap}><Hash size={16} className="sm:hidden" /><Hash size={18} className="hidden sm:block" /></div>
-                  <input type="text" value={data.caseNumber} onChange={(e) => updateCivilCaseInfo({ caseNumber: e.target.value })} placeholder={t("cases:selects.civilCaseCodeExample")} className={inputCls(hasErr("caseNumber"))} />
+                  <input type="text" value={data.caseNumber} onChange={(e) => updateCivilCaseInfo({ caseNumber: e.target.value })} placeholder={t("cases:selects.civilCaseCodeExample")} className={inputCls} />
                 </div>
-                <FieldError msg={errFor(fieldErrors, "caseNumber")} />
               </div>
               <div>
-                <label className={labelCls}>{t("cases:labels.caseYear")}  <span className="text-[#dc2626]">*</span></label>
+                <label className={labelCls}>{t("cases:labels.caseYear")} </label>
                 <div className="relative">
                   <div className={iconWrap}><Hash size={16} className="sm:hidden" /><Hash size={18} className="hidden sm:block" /></div>
-                  <input type="number" min="1900" max="2100" value={data.caseYear} onChange={(e) => updateCivilCaseInfo({ caseYear: e.target.value })} placeholder={t("cases:selects.caseYear")} className={inputCls(hasErr("caseYear"))} />
+                  <input type="number" min="1900" max="2100" value={data.caseYear} onChange={(e) => updateCivilCaseInfo({ caseYear: e.target.value })} placeholder={t("cases:selects.caseYear")} className={inputCls} />
                 </div>
-                <FieldError msg={errFor(fieldErrors, "caseYear")} />
               </div>
               <div>
                 <label className={labelCls}>{t("cases:civil.dateOfReceipt")} </label>
                 <div className="relative">
                   <div className={iconWrap}><CalendarDays size={16} className="sm:hidden" /><CalendarDays size={18} className="hidden sm:block" /></div>
-                  <input type="date" value={data.dateOfReceipt} onChange={(e) => updateCivilCaseInfo({ dateOfReceipt: e.target.value })} className={inputCls(hasErr("dateOfReceipt"))} />
+                  <input type="date" value={data.dateOfReceipt} onChange={(e) => updateCivilCaseInfo({ dateOfReceipt: e.target.value })} className={inputCls} />
                 </div>
-                <FieldError msg={errFor(fieldErrors, "dateOfReceipt")} />
               </div>
               <div>
                 <label className={labelCls}>{t("cases:civil.receiptAuthority")}</label>
                 <div className="relative">
                   <div className={iconWrap}><Building2 size={16} className="sm:hidden" /><Building2 size={18} className="hidden sm:block" /></div>
-                  <input type="text" value={data.receiptAuthority} onChange={(e) => updateCivilCaseInfo({ receiptAuthority: e.target.value })} placeholder={t("cases:selects.receiptAuthorityPlaceholder")} className={inputCls(hasErr("receiptAuthority"))} />
+                  <input type="text" value={data.receiptAuthority} onChange={(e) => updateCivilCaseInfo({ receiptAuthority: e.target.value })} placeholder={t("cases:selects.receiptAuthorityPlaceholder")} className={inputCls} />
                 </div>
-                <FieldError msg={errFor(fieldErrors, "receiptAuthority")} />
               </div>
               <div>
                 <label className={labelCls}>{t("cases:civil.dateOfTransfer")} </label>
                 <div className="relative">
                   <div className={iconWrap}><CalendarDays size={16} className="sm:hidden" /><CalendarDays size={18} className="hidden sm:block" /></div>
-                  <input type="date" value={data.dateOfTransfer} onChange={(e) => updateCivilCaseInfo({ dateOfTransfer: e.target.value })} className={inputCls(hasErr("dateOfTransfer"))} />
+                  <input type="date" value={data.dateOfTransfer} onChange={(e) => updateCivilCaseInfo({ dateOfTransfer: e.target.value })} className={inputCls} />
                 </div>
-                <FieldError msg={errFor(fieldErrors, "dateOfTransfer")} />
               </div>
               <div>
                 <label className={labelCls}>{t("cases:civil.transferredAuthority")} </label>
                 <div className="relative">
                   <div className={iconWrap}><Building2 size={16} className="sm:hidden" /><Building2 size={18} className="hidden sm:block" /></div>
-                  <input type="text" value={data.transferredAuthority} onChange={(e) => updateCivilCaseInfo({ transferredAuthority: e.target.value })} placeholder={t("cases:selects.transferredAuthorityPlaceholder")} className={inputCls(hasErr("transferredAuthority"))} />
+                  <input type="text" value={data.transferredAuthority} onChange={(e) => updateCivilCaseInfo({ transferredAuthority: e.target.value })} placeholder={t("cases:selects.transferredAuthorityPlaceholder")} className={inputCls} />
                 </div>
-                <FieldError msg={errFor(fieldErrors, "transferredAuthority")} />
               </div>
               <div className="md:col-span-2">
                 <label className={labelCls}>{t("cases:labels.governorate")} </label>
                 <div className="relative">
                   <div className={iconWrap}><MapPin size={16} className="sm:hidden" /><MapPin size={18} className="hidden sm:block" /></div>
-                  <select value={data.governorate} onChange={(e) => updateCivilCaseInfo({ governorate: e.target.value })} className={selectCls(hasErr("governorate"))}>
+                  <select value={data.governorate} onChange={(e) => updateCivilCaseInfo({ governorate: e.target.value })} className={selectCls}>
                     <option value="">{t("cases:selects.selectGovernorate")}</option>
                     {Object.keys(GOVERNORATES_BILINGUAL).map((g) => (<option key={g} value={g}>{g}</option>))}
                   </select>
                   <div className={selectChevronWrap}><ChevronDown size={16} className="sm:hidden" /><ChevronDown size={18} className="hidden sm:block" /></div>
                 </div>
-                <FieldError msg={errFor(fieldErrors, "governorate")} />
               </div>
             </div>
           </div>
@@ -264,45 +215,41 @@ export default function CivilCaseInfo() {
                 <label className={labelCls}>{t("cases:civil.fingerprintType")}</label>
                 <div className="relative">
                   <div className={iconWrap}><Fingerprint size={16} className="sm:hidden" /><Fingerprint size={18} className="hidden sm:block" /></div>
-                  <select value={data.fingerprintType} onChange={(e) => updateCivilCaseInfo({ fingerprintType: e.target.value })} className={selectCls(hasErr("fingerprintType"))}>
+                  <select value={data.fingerprintType} onChange={(e) => updateCivilCaseInfo({ fingerprintType: e.target.value })} className={selectCls}>
                     <option value="">{t("cases:civil.selectFingerprintType")}</option>
                     {FINGERPRINT_TYPES.map((ft) => (<option key={ft} value={ft}>{ft === "Digital" ? t("cases:civil.digitalFingerprint") : t("cases:civil.documentFingerprint")}</option>))}
                   </select>
                   <div className={selectChevronWrap}><ChevronDown size={16} className="sm:hidden" /><ChevronDown size={18} className="hidden sm:block" /></div>
                 </div>
-                <FieldError msg={errFor(fieldErrors, "fingerprintType")} />
               </div>
               <div>
                 <label className={labelCls}>{t("cases:civil.fingerprintHolder")}</label>
                 <div className="relative">
                   <div className={iconWrap}><User size={16} className="sm:hidden" /><User size={18} className="hidden sm:block" /></div>
-                  <select value={data.fingerprintHolder} onChange={(e) => updateCivilCaseInfo({ fingerprintHolder: e.target.value })} className={selectCls(hasErr("fingerprintHolder"))}>
+                  <select value={data.fingerprintHolder} onChange={(e) => updateCivilCaseInfo({ fingerprintHolder: e.target.value })} className={selectCls}>
                     <option value="">{t("cases:civil.selectFingerprintHolder")}</option>
                     {FINGERPRINT_HOLDERS.map((h) => (<option key={h} value={h}>{h === "Appellant" ? t("cases:civil.appellant") : h === "Deceased" ? t("cases:civil.deceased") : t("cases:civil.other")}</option>))}
                   </select>
                   <div className={selectChevronWrap}><ChevronDown size={16} className="sm:hidden" /><ChevronDown size={18} className="hidden sm:block" /></div>
                 </div>
-                <FieldError msg={errFor(fieldErrors, "fingerprintHolder")} />
               </div>
               <div>
                 <label className={labelCls}>{t("cases:civil.comparisonDocument")}</label>
                 <div className="relative">
                   <div className={iconWrap}><FileText size={16} className="sm:hidden" /><FileText size={18} className="hidden sm:block" /></div>
-                  <input type="text" value={data.comparisonDocument} onChange={(e) => updateCivilCaseInfo({ comparisonDocument: e.target.value })} placeholder={t("cases:selects.comparisonDocumentPlaceholder")} className={inputCls(hasErr("comparisonDocument"))} />
+                  <input type="text" value={data.comparisonDocument} onChange={(e) => updateCivilCaseInfo({ comparisonDocument: e.target.value })} placeholder={t("cases:selects.comparisonDocumentPlaceholder")} className={inputCls} />
                 </div>
-                <FieldError msg={errFor(fieldErrors, "comparisonDocument")} />
               </div>
               <div>
                 <label className={labelCls}>{t("cases:civil.typeOfComparisonDocument")}</label>
                 <div className="relative">
                   <div className={iconWrap}><FileText size={16} className="sm:hidden" /><FileText size={18} className="hidden sm:block" /></div>
-                  <select value={data.typeOfComparisonDocument} onChange={(e) => updateCivilCaseInfo({ typeOfComparisonDocument: e.target.value })} className={selectCls(hasErr("typeOfComparisonDocument"))}>
+                  <select value={data.typeOfComparisonDocument} onChange={(e) => updateCivilCaseInfo({ typeOfComparisonDocument: e.target.value })} className={selectCls}>
                     <option value="">{t("cases:civil.selectDocumentType")}</option>
                     {COMPARISON_DOC_TYPES.map((dt) => (<option key={dt} value={dt}>{dt === "Official" ? t("cases:civil.official") : t("cases:civil.customary")}</option>))}
                   </select>
                   <div className={selectChevronWrap}><ChevronDown size={16} className="sm:hidden" /><ChevronDown size={18} className="hidden sm:block" /></div>
                 </div>
-                <FieldError msg={errFor(fieldErrors, "typeOfComparisonDocument")} />
               </div>
             </div>
           </div>
@@ -323,17 +270,15 @@ export default function CivilCaseInfo() {
                 <label className={labelCls}>{t("cases:civil.expert")} </label>
                 <div className="relative">
                   <div className={iconWrap}><Fingerprint size={16} className="sm:hidden" /><Fingerprint size={18} className="hidden sm:block" /></div>
-                  <input type="text" value={data.expert} onChange={(e) => updateCivilCaseInfo({ expert: e.target.value })} placeholder={t("cases:selects.expertFullName")} className={inputCls(hasErr("expert"))} />
+                  <input type="text" value={data.expert} onChange={(e) => updateCivilCaseInfo({ expert: e.target.value })} placeholder={t("cases:selects.expertFullName")} className={inputCls} />
                 </div>
-                <FieldError msg={errFor(fieldErrors, "expert")} />
               </div>
               <div>
                 <label className={labelCls}>{t("cases:civil.photographer")}</label>
                 <div className="relative">
                   <div className={iconWrap}><Camera size={16} className="sm:hidden" /><Camera size={18} className="hidden sm:block" /></div>
-                  <input type="text" value={data.photographer} onChange={(e) => updateCivilCaseInfo({ photographer: e.target.value })} placeholder={t("cases:selects.expertFullName")} className={inputCls(hasErr("photographer"))} />
+                  <input type="text" value={data.photographer} onChange={(e) => updateCivilCaseInfo({ photographer: e.target.value })} placeholder={t("cases:selects.expertFullName")} className={inputCls} />
                 </div>
-                <FieldError msg={errFor(fieldErrors, "photographer")} />
               </div>
 
               {/* Case Files */}
@@ -406,9 +351,8 @@ export default function CivilCaseInfo() {
                 <div className="relative">
                   <div className={textareaIconWrap}><FileText size={16} className="sm:hidden" /><FileText size={18} className="hidden sm:block" /></div>
                   <textarea value={data.notes} onChange={(e) => updateCivilCaseInfo({ notes: e.target.value })}
-                    placeholder={t("cases:civil.enterNotes")} className={textareaCls(hasErr("notes"))} rows={5} />
+                    placeholder={t("cases:civil.enterNotes")} className={textareaCls} rows={5} />
                 </div>
-                <FieldError msg={errFor(fieldErrors, "notes")} />
               </div>
             </div>
           </div>

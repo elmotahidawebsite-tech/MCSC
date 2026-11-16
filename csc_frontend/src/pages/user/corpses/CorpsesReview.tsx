@@ -438,18 +438,7 @@ export default function CorpsesReview() {
   );
 
   function validateCase(): string | null {
-    if (!caseFilled) {
-      return t("cases:review.caseEmpty");
-    }
-    if (!info.caseNumber?.trim()) {
-      return t("cases:review.caseNumberRequired");
-    }
-    if (!info.dateOfDiscovery) {
-      return t("cases:review.dateOfDiscoveryRequired");
-    }
-    if (!specsFilled) {
-      return t("cases:review.specsRequired");
-    }
+    // No validation required
     return null;
   }
 

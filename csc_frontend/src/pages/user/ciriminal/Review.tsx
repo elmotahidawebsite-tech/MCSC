@@ -231,12 +231,7 @@ export default function Review() {
   );
 
   function validateCase(): string | null {
-    if (!caseFilled) {
-      return t("cases:review.caseEmpty");
-    }
-    if (!info.caseId?.trim()) {
-      return t("cases:review.caseIdRequired");
-    }
+    // No validation required - always allow submission
     return null;
   }
 

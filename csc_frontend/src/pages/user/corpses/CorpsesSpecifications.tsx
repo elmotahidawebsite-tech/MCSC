@@ -22,73 +22,19 @@ import {
   Stethoscope,
 } from "lucide-react";
 import toast, { Toaster } from "react-hot-toast";
-import { z } from "zod";
 import { useCase } from "@/context/CaseContext";
 import type { CorpsesSpecifications as CorpsesSpecsType } from "@/context/CaseContext";
-import type { ZodFormattedError } from "zod";
 import { mediaKind, formatSize, type MediaKind } from "@/utils/media";
 import { validateCaseFileSize } from "@/utils/caseFileSize";
 import { CaseFileSizeIndicator } from "@/components/common/CaseFileSizeIndicator";
 
-// ================= ✅ نوع الوسيط =================
-
-const corpsesSpecsSchema = z.object({
-  gender: z.string().optional(),
-  approximateAge: z.string().optional(),
-  approximateHeight: z.string().optional(),
-  weight: z.string().optional(),
-  discoveryCircumstances: z.string().optional(),
-  distinguishingMarks: z.string().optional(),
-  underwear: z.string().optional(),
-  outerwear: z.string().optional(),
-  facialFeatures: z.enum(["clear", "unclear", ""]).optional(),
-  facialFeaturesReason: z.string().optional(),
-  handFingerprints: z.enum(["yes", "no", ""]).optional(),
-  handFingerprintsReason: z.string().optional(),
-  biologicalSample: z.array(z.enum(["blood", "tissue", "bones", "none"])).optional(),
-  images: z.array(z.any()).optional(),
-  notes: z.string().optional(),
-});
-
-type CorpsesSpecsErrors = ZodFormattedError<CorpsesSpecsType>;
 type CorpsesSpecsKey = keyof CorpsesSpecsType;
 
-type PerIndexErrors = Record<number, CorpsesSpecsErrors | null>;
+const inputCls = "h-10 sm:h-11 w-full rounded-lg border border-[#dbe5ec] bg-white pl-9 sm:pl-10 pr-3 text-xs sm:text-sm text-[#475569] outline-none placeholder:text-[#64748b] focus:border-[#0089c7] focus:ring-1 focus:ring-[#0089c7]/20 transition";
 
-function errFor(
-  errors: CorpsesSpecsErrors | null,
-  key: CorpsesSpecsKey
-): string | null {
-  if (!errors) return null;
-  const node = errors[key];
-  if (!node) return null;
-  const errs = (node as { _errors?: string[] })._errors;
-  return Array.isArray(errs) ? errs[0] ?? null : null;
-}
+const selectCls = "h-10 sm:h-11 w-full rounded-lg border appearance-none bg-no-repeat bg-right border-[#dbe5ec] bg-white pl-9 sm:pl-10 pr-9 text-xs sm:text-sm text-[#475569] outline-none placeholder:text-[#64748b] focus:border-[#0089c7] focus:ring-1 focus:ring-[#0089c7]/20 transition";
 
-function FieldError({ msg }: { msg: string | null }) {
-  if (!msg) return null;
-  return (
-    <p className="mt-1.5 text-[10px] sm:text-[11px] font-medium text-[#dc2626]">
-      {msg}
-    </p>
-  );
-}
-
-const inputCls = (hasError: boolean) =>
-  `h-10 sm:h-11 w-full rounded-lg border ${
-    hasError ? "border-[#fecaca] ring-1 ring-[#fecaca]" : "border-[#dbe5ec]"
-  } bg-white pl-9 sm:pl-10 pr-3 text-xs sm:text-sm text-[#475569] outline-none placeholder:text-[#64748b] focus:border-[#0089c7] focus:ring-1 focus:ring-[#0089c7]/20`;
-
-const selectCls = (hasError: boolean) =>
-  `h-10 sm:h-11 w-full rounded-lg border appearance-none bg-no-repeat bg-right ${
-    hasError ? "border-[#fecaca] ring-1 ring-[#fecaca]" : "border-[#dbe5ec]"
-  } bg-white pl-9 sm:pl-10 pr-9 text-xs sm:text-sm text-[#475569] outline-none placeholder:text-[#64748b] focus:border-[#0089c7] focus:ring-1 focus:ring-[#0089c7]/20`;
-
-const textareaCls = (hasError: boolean) =>
-  `w-full min-h-[90px] sm:min-h-[100px] resize-y rounded-lg border ${
-    hasError ? "border-[#fecaca] ring-1 ring-[#fecaca]" : "border-[#dbe5ec]"
-  } bg-white px-3 sm:px-4 py-3 text-xs sm:text-sm text-[#475569] outline-none placeholder:text-[#64748b] focus:border-[#0089c7] focus:ring-1 focus:ring-[#0089c7]/20`;
+const textareaCls = "w-full min-h-[90px] sm:min-h-[100px] resize-y rounded-lg border border-[#dbe5ec] bg-white px-3 sm:px-4 py-3 text-xs sm:text-sm text-[#475569] outline-none placeholder:text-[#64748b] focus:border-[#0089c7] focus:ring-1 focus:ring-[#0089c7]/20 transition";
 
 const labelCls =
   "mb-1.5 sm:mb-2 block text-[11px] sm:text-[12px] md:text-[13px] font-bold uppercase tracking-wider text-[#0875a8]";
@@ -192,7 +138,6 @@ type CorpseCardProps = {
   corpse: CorpsesSpecsType;
   cardIndex: number;
   isExpanded: boolean;
-  errors: CorpsesSpecsErrors | null;
   onToggleExpand: () => void;
   onUpdateField: <K extends CorpsesSpecsKey>(
     field: K,
@@ -208,7 +153,6 @@ function CorpseCard({
   corpse,
   cardIndex,
   isExpanded,
-  errors,
   onToggleExpand,
   onUpdateField,
   onAddImages,
@@ -231,10 +175,6 @@ function CorpseCard({
       for (const u of urls) URL.revokeObjectURL(u);
     };
   }, [corpse.images]);
-
-  function hasErr(key: CorpsesSpecsKey): boolean {
-    return !!errFor(errors, key);
-  }
 
   // ✅ Global case-level 200 MB limit validation
   function handleImagesChange(e: ChangeEvent<HTMLInputElement>): void {
@@ -336,7 +276,7 @@ function CorpseCard({
                 <select
                   value={corpse.gender}
                   onChange={(e) => onUpdateField("gender", e.target.value)}
-                  className={selectCls(hasErr("gender"))}
+                  className={selectCls}
                   style={{ backgroundImage: "url(\"data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' fill='none' viewBox='0 0 24 24' stroke='%2364748b'%3E%3Cpath stroke-linecap='round' stroke-linejoin='round' stroke-width='2' d='M19 9l-7 7-7-7'%3E%3C/path%3E%3C/svg%3E\")", backgroundSize: "18px", backgroundPosition: "right 10px center" }}
                 >
                   <option value="">{t("cases:genderOptions.selectGender")}</option>
@@ -345,7 +285,6 @@ function CorpseCard({
                   <option value="none">{t("cases:genderOptions.none")}</option>
                 </select>
               </div>
-              <FieldError msg={errFor(errors, "gender")} />
             </Card>
 
             <Card>
@@ -360,7 +299,7 @@ function CorpseCard({
                 <select
                   value={corpse.approximateAge}
                   onChange={(e) => onUpdateField("approximateAge", e.target.value)}
-                  className={selectCls(hasErr("approximateAge"))}
+                  className={selectCls}
                   style={{ backgroundImage: "url(\"data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' fill='none' viewBox='0 0 24 24' stroke='%2364748b'%3E%3Cpath stroke-linecap='round' stroke-linejoin='round' stroke-width='2' d='M19 9l-7 7-7-7'%3E%3C/path%3E%3C/svg%3E\")", backgroundSize: "18px", backgroundPosition: "right 10px center" }}
                 >
                   <option value="">{t("cases:selects.selectRange")}</option>
@@ -369,7 +308,6 @@ function CorpseCard({
                   ))}
                 </select>
               </div>
-              <FieldError msg={errFor(errors, "approximateAge")} />
             </Card>
 
             <Card>
@@ -386,13 +324,12 @@ function CorpseCard({
                   value={corpse.approximateHeight}
                   onChange={(e) => onUpdateField("approximateHeight", e.target.value)}
                   placeholder={t("cases:selects.approximateHeightCm")}
-                  className={inputCls(hasErr("approximateHeight"))}
+                  className={inputCls}
                 />
                 <span className="absolute right-3 top-1/2 -translate-y-1/2 text-[10px] sm:text-xs text-[#64748b]">
                   cm
                 </span>
               </div>
-              <FieldError msg={errFor(errors, "approximateHeight")} />
             </Card>
 
             <Card>
@@ -407,7 +344,7 @@ function CorpseCard({
                 <select
                   value={corpse.weight}
                   onChange={(e) => onUpdateField("weight", e.target.value)}
-                  className={selectCls(hasErr("weight"))}
+                  className={selectCls}
                   style={{ backgroundImage: "url(\"data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' fill='none' viewBox='0 0 24 24' stroke='%2364748b'%3E%3Cpath stroke-linecap='round' stroke-linejoin='round' stroke-width='2' d='M19 9l-7 7-7-7'%3E%3C/path%3E%3C/svg%3E\")", backgroundSize: "18px", backgroundPosition: "right 10px center" }}
                 >
                   <option value="">{t("cases:selects.selectWeight")}</option>
@@ -416,7 +353,6 @@ function CorpseCard({
                   ))}
                 </select>
               </div>
-              <FieldError msg={errFor(errors, "weight")} />
             </Card>
           </div>
 
@@ -428,10 +364,9 @@ function CorpseCard({
               value={corpse.discoveryCircumstances}
               onChange={(e) => onUpdateField("discoveryCircumstances", e.target.value)}
               placeholder={t("cases:selects.describeCircumstances")}
-              className={textareaCls(hasErr("discoveryCircumstances"))}
+              className={textareaCls}
               rows={2}
             />
-            <FieldError msg={errFor(errors, "discoveryCircumstances")} />
           </Card>
 
           <Card>
@@ -442,10 +377,9 @@ function CorpseCard({
               value={corpse.distinguishingMarks}
               onChange={(e) => onUpdateField("distinguishingMarks", e.target.value)}
               placeholder={t("cases:selects.describeTattoosScars")}
-              className={textareaCls(hasErr("distinguishingMarks"))}
+              className={textareaCls}
               rows={2}
             />
-            <FieldError msg={errFor(errors, "distinguishingMarks")} />
           </Card>
 
           <div className="grid grid-cols-1 gap-4 sm:gap-5 md:grid-cols-2 md:gap-6">
@@ -457,10 +391,9 @@ function CorpseCard({
                 value={corpse.underwear}
                 onChange={(e) => onUpdateField("underwear", e.target.value)}
                 placeholder={t("cases:selects.describeUnderwear")}
-                className={textareaCls(hasErr("underwear"))}
+                className={textareaCls}
                 rows={2}
               />
-              <FieldError msg={errFor(errors, "underwear")} />
             </Card>
 
             <Card>
@@ -471,10 +404,9 @@ function CorpseCard({
                 value={corpse.outerwear}
                 onChange={(e) => onUpdateField("outerwear", e.target.value)}
                 placeholder={t("cases:selects.describeOuterwear")}
-                className={textareaCls(hasErr("outerwear"))}
+                className={textareaCls}
                 rows={2}
               />
-              <FieldError msg={errFor(errors, "outerwear")} />
             </Card>
           </div>
 
@@ -511,11 +443,8 @@ function CorpseCard({
                   value={corpse.facialFeaturesReason}
                   onChange={(e) => onUpdateField("facialFeaturesReason", e.target.value)}
                   placeholder={t("cases:selects.provideReason")}
-                  className={`h-10 sm:h-11 w-full rounded-lg border ${
-                    hasErr("facialFeaturesReason") ? "border-[#fecaca] ring-1 ring-[#fecaca]" : "border-[#dbe5ec]"
-                  } bg-white px-3 sm:px-4 text-xs sm:text-sm text-[#475569] outline-none placeholder:text-[#64748b] focus:border-[#0089c7] focus:ring-1 focus:ring-[#0089c7]/20`}
+                  className="h-10 sm:h-11 w-full rounded-lg border border-[#dbe5ec] bg-white px-3 sm:px-4 text-xs sm:text-sm text-[#475569] outline-none placeholder:text-[#64748b] focus:border-[#0089c7] focus:ring-1 focus:ring-[#0089c7]/20"
                 />
-                <FieldError msg={errFor(errors, "facialFeaturesReason")} />
               </div>
             </div>
           </Card>
@@ -553,11 +482,8 @@ function CorpseCard({
                   value={corpse.handFingerprintsReason}
                   onChange={(e) => onUpdateField("handFingerprintsReason", e.target.value)}
                   placeholder={t("cases:selects.provideReason")}
-                  className={`h-10 sm:h-11 w-full rounded-lg border ${
-                    hasErr("handFingerprintsReason") ? "border-[#fecaca] ring-1 ring-[#fecaca]" : "border-[#dbe5ec]"
-                  } bg-white px-3 sm:px-4 text-xs sm:text-sm text-[#475569] outline-none placeholder:text-[#64748b] focus:border-[#0089c7] focus:ring-1 focus:ring-[#0089c7]/20`}
+                  className="h-10 sm:h-11 w-full rounded-lg border border-[#dbe5ec] bg-white px-3 sm:px-4 text-xs sm:text-sm text-[#475569] outline-none placeholder:text-[#64748b] focus:border-[#0089c7] focus:ring-1 focus:ring-[#0089c7]/20"
                 />
-                <FieldError msg={errFor(errors, "handFingerprintsReason")} />
               </div>
             </div>
           </Card>
@@ -595,7 +521,6 @@ function CorpseCard({
                 label={t("cases:biologicalSamples.none")}
               />
             </div>
-            <FieldError msg={errFor(errors, "biologicalSample")} />
           </Card>
 
           <Card>
@@ -624,9 +549,7 @@ function CorpseCard({
               />
             </div>
             <div
-              className={`flex min-h-24 flex-wrap items-center gap-3 rounded-md border bg-[#f8fafc] p-2 ${
-                hasErr("images") ? "border-[#fecaca]" : "border-[#dbe5ec]"
-              }`}
+              className="flex min-h-24 flex-wrap items-center gap-3 rounded-md border border-[#dbe5ec] bg-[#f8fafc] p-2"
             >
               {previewUrls.length === 0 ? (
                 <div
@@ -682,7 +605,6 @@ function CorpseCard({
                 </div>
               )}
             </div>
-            <FieldError msg={errFor(errors, "images")} />
           </Card>
 
           <Card>
@@ -696,10 +618,9 @@ function CorpseCard({
               value={corpse.notes}
               onChange={(e) => onUpdateField("notes", e.target.value)}
               placeholder={t("cases:selects.additionalNotes")}
-              className={textareaCls(hasErr("notes"))}
+              className={textareaCls}
               rows={2}
             />
-            <FieldError msg={errFor(errors, "notes")} />
           </Card>
         </div>
       )}
@@ -732,7 +653,6 @@ export default function CorpsesSpecifications() {
   const corpses = caseData.corpsesSpecifications;
 
   const [expanded, setExpanded] = useState<Record<number, boolean>>(() => ({ 0: true }));
-  const [perIndexErrors, setPerIndexErrors] = useState<PerIndexErrors>({});
 
   const fileInputRef = useRef<HTMLInputElement>(null);
 
@@ -747,15 +667,6 @@ export default function CorpsesSpecifications() {
         ...pe,
         [next.length - 1]: true,
       }));
-      setPerIndexErrors((prevE) => {
-        const copy: PerIndexErrors = {};
-        const keys = Object.keys(prevE);
-        for (const k of keys) {
-          const i = Number(k);
-          if (i < next.length - 1) copy[i] = prevE[i] ?? null;
-        }
-        return copy;
-      });
       return next;
     });
   }
@@ -774,19 +685,6 @@ export default function CorpsesSpecifications() {
           continue;
         }
         next[i - offset] = prev[i];
-      }
-      return next;
-    });
-    setPerIndexErrors((prev) => {
-      const next: PerIndexErrors = {};
-      let offset = 0;
-      for (const key of Object.keys(prev)) {
-        const i = Number(key);
-        if (i === index) {
-          offset = 1;
-          continue;
-        }
-        next[i - offset] = prev[i] ?? null;
       }
       return next;
     });
@@ -821,43 +719,6 @@ export default function CorpsesSpecifications() {
   }
 
   function validateAndGoNext(): void {
-    const itemErrorsClone: PerIndexErrors = {};
-    let firstErrorIdx: number | null = null;
-    let firstErrorMsg: string | null = null;
-
-    for (let i = 0; i < corpses.length; i++) {
-      const oneRes = corpsesSpecsSchema.safeParse(corpses[i]);
-      if (!oneRes.success) {
-        itemErrorsClone[i] = oneRes.error.format() as CorpsesSpecsErrors;
-        if (firstErrorIdx === null) {
-          firstErrorIdx = i;
-          const keys = Object.keys(itemErrorsClone[i]!)
-            .filter((k) => k !== "_errors") as CorpsesSpecsKey[];
-          for (const k of keys) {
-            const node = (itemErrorsClone[i] as any)[k];
-            const m = (node as { _errors?: string[] })?._errors?.[0];
-            if (m) {
-              firstErrorMsg = `${t("cases:display.corpseErrorPrefix")}${i + 1}: ${m}`;
-              break;
-            }
-          }
-        }
-      } else {
-        itemErrorsClone[i] = null;
-      }
-    }
-
-    setPerIndexErrors(itemErrorsClone);
-
-    const anyBad = Object.values(itemErrorsClone).some(Boolean);
-    if (anyBad) {
-      if (firstErrorIdx !== null) {
-        setExpanded((prev) => ({ ...prev, [firstErrorIdx]: true }));
-      }
-      toast.error(firstErrorMsg ?? t("cases:validation.checkHighlighted"));
-      return;
-    }
-
     navigate("/user/corpses/review");
   }
 
@@ -920,7 +781,6 @@ export default function CorpsesSpecifications() {
               corpse={corpse}
               cardIndex={index}
               isExpanded={expanded[index] ?? index === corpses.length - 1}
-              errors={perIndexErrors[index] ?? null}
               onToggleExpand={() =>
                 setExpanded((prev) => ({
                   ...prev,

@@ -1,6 +1,7 @@
 """
 Django settings for CSC (Crime Scene Collector) project - MVP.
 """
+
 import logging
 import os
 from datetime import timedelta
@@ -8,7 +9,6 @@ from pathlib import Path
 from decouple import config
 from django.core.exceptions import ImproperlyConfigured  # E2/E3: للحارس
 import secrets
-
 
 logger = logging.getLogger("csc")
 
@@ -20,34 +20,28 @@ BASE_DIR = Path(__file__).resolve().parent.parent
 # الملفات_related: .env (محلي DEBUG=True / سيرفر DEBUG=False)، 📗 5.1
 #   DB_* — التبديل dev↔prod = تغيير env بس، صفر تعديل كود.
 
-# E3: بلا fallback — لو مش متظبط، الحارس تحت هيرفض الإقلاع (مش هيشتغل بالسر الافتراضي)
-SECRET_KEY = os.environ.get("DJANGO_SECRET_KEY")
 
-# E2: الافتراضي False (الوضع الآمن هو الافتراضي)، مش True
-DEBUG = os.environ.get("DJANGO_DEBUG", "False").strip().lower() in ("1", "true", "yes")
+# E3: Secret Key
+SECRET_KEY = config("DJANGO_SECRET_KEY", default=None)
 
-# E1: من env، مش "*" — فاصل/فراغ بيتشال
-#   ⚠️ وإصلاح bug: os.environ.get بياخد 2 args بس؛ السطر المعلّق القديم كان
-#   بيحط 3 (مفتاح + 2 default) => لو اتفك كان هيرمي TypeError. هنا القراءة صح.
-ALLOWED_HOSTS = [
-    h.strip()
-    for h in os.environ.get("DJANGO_ALLOWED_HOSTS", "").split(",")
-    if h.strip()
-]
+# E2: Debug Mode
+DEBUG = config("DJANGO_DEBUG", default=False, cast=bool)
 
+# E1: Allowed Hosts
+ALLOWED_HOSTS = config(
+    "DJANGO_ALLOWED_HOSTS",
+    default="localhost,127.0.0.1,0.0.0.0",
+    cast=lambda value: [host.strip() for host in value.split(",") if host.strip()],
+)
 
-# E2/E3 guard: إنتاج (DEBUG=False) من غير سر = إقلاع ممنوع
+# Production guard
 if not DEBUG and not SECRET_KEY:
-    raise ImproperlyConfigured(
-        "DJANGO_SECRET_KEY مطلوب لما DJANGO_DEBUG=False — متشغّلش الإنتاج بالسر الافتراضي."
-    )
+    raise ImproperlyConfigured("DJANGO_SECRET_KEY مطلوب لما DJANGO_DEBUG=False")
 
-# E3-dev: في التطوير (DEBUG=True) من غير سر → ولّد مؤقت عشان Django نفسه يحتاجه
-# (مش fallback ثابت زي قبل — ده value عشوائي per-process، ما يتسرّبش ولا يتكرر)
+# Development only
 if DEBUG and not SECRET_KEY:
     SECRET_KEY = "dev-only-" + secrets.token_urlsafe(50)
-    logger.warning("⚠️ SECRET_KEY مؤقت للتطوير فقط — حط DJANGO_SECRET_KEY في .env المحلي")
-
+    logger.warning("SECRET_KEY مؤقت للتطوير فقط")
 INSTALLED_APPS = [
     "django.contrib.admin",
     "django.contrib.auth",
@@ -55,12 +49,12 @@ INSTALLED_APPS = [
     "django.contrib.sessions",
     "django.contrib.messages",
     "django.contrib.staticfiles",
-    'rest_framework_simplejwt.token_blacklist',  # ✅ SEC-003: JWT Blacklisting
+    "rest_framework_simplejwt.token_blacklist",  # ✅ SEC-003: JWT Blacklisting
     # third party
     "rest_framework",
     "rest_framework_simplejwt",
     "corsheaders",
-    #Docs
+    # Docs
     "drf_spectacular",
     # local apps
     "users",
@@ -105,9 +99,9 @@ WSGI_APPLICATION = "config.wsgi.application"
 # CACHES - Required for Rate Limiting (SEC-002)
 # =============================================================================
 CACHES = {
-    'default': {
-        'BACKEND': 'django.core.cache.backends.locmem.LocMemCache',
-        'LOCATION': 'mcsc-rate-limit-cache',
+    "default": {
+        "BACKEND": "django.core.cache.backends.locmem.LocMemCache",
+        "LOCATION": "mcsc-rate-limit-cache",
     }
 }
 
@@ -136,7 +130,9 @@ DATABASES = {
 AUTH_USER_MODEL = "users.User"
 
 AUTH_PASSWORD_VALIDATORS = [
-    {"NAME": "django.contrib.auth.password_validation.UserAttributeSimilarityValidator"},
+    {
+        "NAME": "django.contrib.auth.password_validation.UserAttributeSimilarityValidator"
+    },
     {"NAME": "django.contrib.auth.password_validation.MinimumLengthValidator"},
     {"NAME": "django.contrib.auth.password_validation.CommonPasswordValidator"},
     {"NAME": "django.contrib.auth.password_validation.NumericPasswordValidator"},
@@ -159,9 +155,7 @@ REST_FRAMEWORK = {
     "DEFAULT_AUTHENTICATION_CLASSES": (
         "rest_framework_simplejwt.authentication.JWTAuthentication",
     ),
-    "DEFAULT_PERMISSION_CLASSES": (
-        "rest_framework.permissions.IsAuthenticated",
-    ),
+    "DEFAULT_PERMISSION_CLASSES": ("rest_framework.permissions.IsAuthenticated",),
     "DEFAULT_PAGINATION_CLASS": "rest_framework.pagination.PageNumberPagination",
     "PAGE_SIZE": 20,
     "DEFAULT_FILTER_BACKENDS": (
@@ -170,14 +164,14 @@ REST_FRAMEWORK = {
     ),
     "DEFAULT_SCHEMA_CLASS": ("drf_spectacular.openapi.AutoSchema"),
     # ✅ SEC-002: Rate Limiting
-    'DEFAULT_THROTTLE_CLASSES': [
-        'rest_framework.throttling.AnonRateThrottle',
-        'rest_framework.throttling.UserRateThrottle',
+    "DEFAULT_THROTTLE_CLASSES": [
+        "rest_framework.throttling.AnonRateThrottle",
+        "rest_framework.throttling.UserRateThrottle",
     ],
-    'DEFAULT_THROTTLE_RATES': {
-        'anon': '100/hour',       # الزوار المجهولين: 100 طلب/ساعة
-        'user': '1000/hour',      # المستخدمين: 1000 طلب/ساعة
-        'login': '5/minute',      # تسجيل الدخول: 5 محاولات/دقيقة
+    "DEFAULT_THROTTLE_RATES": {
+        "anon": "100/hour",  # الزوار المجهولين: 100 طلب/ساعة
+        "user": "1000/hour",  # المستخدمين: 1000 طلب/ساعة
+        "login": "5/minute",  # تسجيل الدخول: 5 محاولات/دقيقة
     },
 }
 
@@ -210,7 +204,7 @@ SPECTACULAR_SETTINGS = {
 # =============================================================================
 
 # ✅ تأكد إن SIGNING_KEY دايمًا ليه قيمة (مش None)
-_jwt_signing_key = config('JWT_SIGNING_KEY', default=None)
+_jwt_signing_key = config("JWT_SIGNING_KEY", default=None)
 if not _jwt_signing_key:
     # لو مفيش مفتاح JWT منفصل، استخدم SECRET_KEY
     _jwt_signing_key = SECRET_KEY
@@ -225,25 +219,21 @@ if not _jwt_signing_key:
 
 SIMPLE_JWT = {
     # ✅ مدة التوكنات قصيرة
-    'ACCESS_TOKEN_LIFETIME': timedelta(minutes=15),   # بدل 8 ساعات
-    'REFRESH_TOKEN_LIFETIME': timedelta(days=1),      # بدل 7 أيام
-    
+    "ACCESS_TOKEN_LIFETIME": timedelta(minutes=15),  # بدل 8 ساعات
+    "REFRESH_TOKEN_LIFETIME": timedelta(days=1),  # بدل 7 أيام
     # ✅ تدوير التوكنات
-    'ROTATE_REFRESH_TOKENS': True,
-    'BLACKLIST_AFTER_ROTATION': True,
-    
+    "ROTATE_REFRESH_TOKENS": True,
+    "BLACKLIST_AFTER_ROTATION": True,
     # ✅ أمان إضافي
-    'UPDATE_LAST_LOGIN': True,
-    'CHECK_USER_IS_ACTIVE': True,
-    
+    "UPDATE_LAST_LOGIN": True,
+    "CHECK_USER_IS_ACTIVE": True,
     # ✅ مفتاح التوقيع (مضمون مش فاضي)
-    'SIGNING_KEY': _jwt_signing_key,
-    
+    "SIGNING_KEY": _jwt_signing_key,
     # باقي الإعدادات الافتراضية
-    'AUTH_HEADER_TYPES': ('Bearer',),
-    'USER_ID_FIELD': 'id',
-    'USER_ID_CLAIM': 'user_id',
-    'AUTH_TOKEN_CLASSES': ('rest_framework_simplejwt.tokens.AccessToken',),
+    "AUTH_HEADER_TYPES": ("Bearer",),
+    "USER_ID_FIELD": "id",
+    "USER_ID_CLAIM": "user_id",
+    "AUTH_TOKEN_CLASSES": ("rest_framework_simplejwt.tokens.AccessToken",),
 }
 
 # --- CORS (MVP: open for local frontend dev, tighten later) ---
@@ -265,14 +255,12 @@ LOGS_DIR.mkdir(parents=True, exist_ok=True)
 LOGGING = {
     "version": 1,
     "disable_existing_loggers": False,
-
     "formatters": {
         "verbose": {
             "format": "[{asctime}] {levelname:<8} {name}:{lineno} - {message}",
             "style": "{",
         },
     },
-
     "handlers": {
         "console": {
             "class": "logging.StreamHandler",
@@ -282,9 +270,9 @@ LOGGING = {
         "info_file": {
             "class": "logging.handlers.TimedRotatingFileHandler",
             "filename": str(LOGS_DIR / "info.log"),
-            "when": "midnight",          # يلف كل نص ليل
-            "interval": 1,               # كل 1 يوم
-            "backupCount": 30,           # يحتفظ بـ 30 يوم
+            "when": "midnight",  # يلف كل نص ليل
+            "interval": 1,  # كل 1 يوم
+            "backupCount": 30,  # يحتفظ بـ 30 يوم
             "formatter": "verbose",
             "encoding": "utf-8",
             "level": "INFO",
@@ -295,7 +283,7 @@ LOGGING = {
             "filename": str(LOGS_DIR / "error.log"),
             "when": "midnight",
             "interval": 1,
-            "backupCount": 90,           # الأخطاء نحتفظ بيها 90 يوم
+            "backupCount": 90,  # الأخطاء نحتفظ بيها 90 يوم
             "formatter": "verbose",
             "encoding": "utf-8",
             "level": "ERROR",
@@ -305,7 +293,6 @@ LOGGING = {
         "handlers": ["console", "info_file", "error_file"],
         "level": "WARNING",
     },
-
     "loggers": {
         # اللوجز بتاعتنا (اللي هنكتبها بـ logger.info / logger.error)
         "csc": {

@@ -17,27 +17,14 @@ import {
 import toast, { Toaster } from "react-hot-toast";
 import { useCase } from "../../../context/CaseContext";
 import type { EvidenceData } from "../../../context/CaseContext";
-import { evidenceItemSchema, evidenceArraySchema } from "@/schemas/caseSchema";
-import type { ZodFormattedError } from "zod";
 import { mediaKind, formatSize, type MediaKind } from "@/utils/media";
 import { validateCaseFileSize } from "@/utils/caseFileSize";
 import { CaseFileSizeIndicator } from "@/components/common/CaseFileSizeIndicator";
-
-type EvidenceItemShape = {
-  evidenceId: string;
-  evidenceType: string;
-  collectedBy: string;
-  description: string;
-  images: File[];
-};
-type EvidenceItemErrors = ZodFormattedError<EvidenceItemShape>;
-type EvidenceKey = keyof EvidenceItemShape;
 
 type EvidenceCardProps = {
   evidence: EvidenceData;
   cardIndex: number;
   isExpanded: boolean;
-  errors: EvidenceItemErrors | null;
   onToggleExpand: () => void;
   onUpdateField: <K extends keyof EvidenceData>(
     field: K,
@@ -49,27 +36,10 @@ type EvidenceCardProps = {
   showRemove?: boolean;
 };
 
-function errFor(
-  errors: EvidenceItemErrors | null,
-  key: EvidenceKey
-): string | null {
-  if (!errors) return null;
-  const node = errors[key];
-  if (!node) return null;
-  const errs = (node as { _errors: string[] })._errors;
-  return Array.isArray(errs) ? errs[0] ?? null : null;
-}
-
-function FieldError({ msg }: { msg: string | null }) {
-  if (!msg) return null;
-  return <p className="mt-1.5 text-[10px] font-medium text-[#dc2626]">{msg}</p>;
-}
-
 function EvidenceCard({
   evidence,
   cardIndex,
   isExpanded,
-  errors,
   onToggleExpand,
   onUpdateField,
   onAddImages,
@@ -117,25 +87,15 @@ function EvidenceCard({
   }
 
   const baseInput =
-    "h-9 w-full rounded-md border bg-white text-xs text-[#475569] outline-none placeholder:text-[#94a3b8] focus:ring-1 transition";
+    "h-9 w-full rounded-md border border-[#dbe5ec] bg-white text-xs text-[#475569] outline-none placeholder:text-[#94a3b8] focus:border-[#0089c7] focus:ring-1 focus:ring-[#0089c7]/20 transition";
   const baseSelect =
-    "h-9 w-full appearance-none rounded-md border bg-white px-3 pr-8 text-xs text-[#475569] outline-none focus:ring-1 transition";
+    "h-9 w-full appearance-none rounded-md border border-[#dbe5ec] bg-white px-3 pr-8 text-xs text-[#475569] outline-none focus:border-[#0089c7] focus:ring-1 focus:ring-[#0089c7]/20 transition";
   const baseTextarea =
-    "w-full resize-none rounded-md border bg-white px-3 py-2.5 text-xs text-[#475569] outline-none placeholder:text-[#94a3b8] focus:ring-1 transition";
+    "w-full resize-none rounded-md border border-[#dbe5ec] bg-white px-3 py-2.5 text-xs text-[#475569] outline-none placeholder:text-[#94a3b8] focus:border-[#0089c7] focus:ring-1 focus:ring-[#0089c7]/20 transition";
 
-  const inputCls = (key: EvidenceKey, extra = "") =>
-    `${baseInput} ${extra} ${errFor(errors, key)
-      ? "border-[#fecaca] focus:border-[#dc2626] focus:ring-[#dc2626]/20"
-      : "border-[#dbe5ec] focus:border-[#0089c7] focus:ring-[#0089c7]/20"
-    }`;
-  const selectCls = (key: EvidenceKey) =>
-    errFor(errors, key)
-      ? `${baseSelect} border-[#fecaca] focus:border-[#dc2626] focus:ring-[#dc2626]/20`
-      : `${baseSelect} border-[#dbe5ec] focus:border-[#0089c7] focus:ring-[#0089c7]/20`;
-  const textareaCls = (key: EvidenceKey) =>
-    errFor(errors, key)
-      ? `${baseTextarea} border-[#fecaca] focus:border-[#dc2626] focus:ring-[#dc2626]/20`
-      : `${baseTextarea} border-[#dbe5ec] focus:border-[#0089c7] focus:ring-[#0089c7]/20`;
+  const inputCls = `${baseInput}`;
+  const selectCls = `${baseSelect}`;
+  const textareaCls = `${baseTextarea}`;
 
   const labelCls =
     "mb-2 block text-[13px] font-bold uppercase tracking-wider text-[#0875a8]";
@@ -193,10 +153,9 @@ function EvidenceCard({
                   value={evidence.evidenceId}
                   onChange={(e) => onUpdateField("evidenceId", e.target.value)}
                   placeholder={t("cases:selects.evidenceIdPlaceholder")}
-                  className={inputCls("evidenceId", "pl-3 pr-10")}
+                  className={`${inputCls} pl-3 pr-10`}
                 />
               </div>
-              <FieldError msg={errFor(errors, "evidenceId")} />
             </div>
 
             <div>
@@ -205,7 +164,7 @@ function EvidenceCard({
                 <select
                   value={evidence.evidenceType}
                   onChange={(e) => onUpdateField("evidenceType", e.target.value)}
-                  className={selectCls("evidenceType")}
+                  className={selectCls}
                 >
                   <option value="">{t("cases:selects.selectOption")}</option>
                   <option value="finger">{t("cases:evidenceTypes.finger")}</option>
@@ -217,7 +176,6 @@ function EvidenceCard({
                   className="pointer-events-none absolute right-3 top-1/2 -translate-y-1/2 text-[#64748b]"
                 />
               </div>
-              <FieldError msg={errFor(errors, "evidenceType")} />
             </div>
 
 
@@ -228,9 +186,8 @@ function EvidenceCard({
                 value={evidence.description}
                 onChange={(e) => onUpdateField("description", e.target.value)}
                 placeholder={t("cases:selects.evidenceDescriptionPlaceholder")}
-                className={textareaCls("description")}
+                className={textareaCls}
               />
-              <FieldError msg={errFor(errors, "description")} />
             </div>
           </div>
 
@@ -258,10 +215,7 @@ function EvidenceCard({
             </div>
 
             <div
-              className={`flex min-h-24 flex-wrap items-center gap-3 rounded-md border bg-[#f8fafc] p-2 ${errFor(errors, "images")
-                ? "border-[#fecaca]"
-                : "border-[#dbe5ec]"
-                }`}
+              className="flex min-h-24 flex-wrap items-center gap-3 rounded-md border border-[#dbe5ec] bg-[#f8fafc] p-2"
             >
               {previewUrls.length === 0 ? (
                 <div className="flex h-20 w-28 flex-col items-center justify-center rounded-md border border-dashed border-[#cbd5e1] bg-white text-[#94a3b8]">
@@ -315,7 +269,6 @@ function EvidenceCard({
                 </div>
               )}
             </div>
-            <FieldError msg={errFor(errors, "images")} />
           </div>
         </>
       )}
@@ -330,17 +283,12 @@ const EMPTY_EVIDENCE: EvidenceData = {
   images: [],
 };
 
-type PerIndexErrors = Record<number, EvidenceItemErrors | null>;
-type TopLevelError = string | null;
-
 export default function Evidence() {
   const navigate = useNavigate();
   const { t } = useTranslation(["cases", "common"]);
   const { caseData, setEvidence } = useCase();
 
   const [expanded, setExpanded] = useState<Record<number, boolean>>(() => ({}));
-  const [perIndexErrors, setPerIndexErrors] = useState<PerIndexErrors>({});
-  const [topLevelError, setTopLevelError] = useState<TopLevelError>(null);
 
   useEffect(() => {
     if (caseData.evidence.length === 0) {
@@ -357,15 +305,6 @@ export default function Evidence() {
         ...pe,
         [next.length - 1]: true,
       }));
-      setPerIndexErrors((prevE) => {
-        const copy: PerIndexErrors = {};
-        const keys = Object.keys(prevE);
-        for (const k of keys) {
-          const i = Number(k);
-          if (i < next.length - 1) copy[i] = prevE[i] ?? null;
-        }
-        return copy;
-      });
       return next;
     });
   }
@@ -384,19 +323,6 @@ export default function Evidence() {
           continue;
         }
         next[i - offset] = prev[i];
-      }
-      return next;
-    });
-    setPerIndexErrors((prev) => {
-      const next: PerIndexErrors = {};
-      let offset = 0;
-      for (const key of Object.keys(prev)) {
-        const i = Number(key);
-        if (i === index) {
-          offset = 1;
-          continue;
-        }
-        next[i - offset] = prev[i] ?? null;
       }
       return next;
     });
@@ -431,100 +357,6 @@ export default function Evidence() {
   }
 
   function validateAndGoNext(): void {
-    const topRes = evidenceArraySchema.safeParse(caseData.evidence);
-    if (!topRes.success) {
-      const topFormatted = topRes.error.format();
-      const topMsg =
-        (topFormatted as { _errors?: string[] })._errors?.[0] ?? null;
-      setTopLevelError(topMsg);
-
-      const byIndex: PerIndexErrors = {};
-
-      const all = (topFormatted as any) as Record<
-        string,
-        EvidenceItemErrors | undefined
-      >;
-      const numericKeys = Object.keys(all).filter(
-        (k) => /^\d+$/.test(k)
-      ) as unknown as string[];
-      for (const k of numericKeys) {
-        const i = Number(k);
-        const itemErrors = all[k];
-        if (itemErrors) byIndex[i] = itemErrors as EvidenceItemErrors;
-      }
-
-      setPerIndexErrors(byIndex);
-
-      if (Object.keys(byIndex).length > 0) {
-        const firstIdx = Math.min(
-          ...Object.keys(byIndex).map((k) => Number(k))
-        );
-        setExpanded((prev) => ({ ...prev, [firstIdx]: true }));
-        const firstErr = byIndex[firstIdx];
-        let msg: string | null = null;
-        if (firstErr) {
-          const keys = Object.keys(firstErr)
-            .filter((k) => k !== "_errors") as EvidenceKey[];
-
-          for (const k of keys) {
-            const node = firstErr[k];
-            const m = (node as { _errors?: string[] })?._errors?.[0];
-
-            if (m) {
-              msg = `${t("cases:evidenceSection.errorPrefix")}${firstIdx + 1}: ${m}`;
-              break;
-            }
-          }
-        }
-        toast.error(msg ?? t("cases:messages.fixEvidenceErrors"));
-      } else if (topMsg) {
-        toast.error(topMsg);
-      } else {
-        toast.error(t("cases:messages.checkEvidenceDetails"));
-      }
-      return;
-    }
-
-    const itemErrorsClone: PerIndexErrors = {};
-    for (let i = 0; i < caseData.evidence.length; i++) {
-      const oneRes = evidenceItemSchema.safeParse(caseData.evidence[i]);
-      if (!oneRes.success) {
-        itemErrorsClone[i] = oneRes.error.format() as EvidenceItemErrors;
-      } else {
-        itemErrorsClone[i] = null;
-      }
-    }
-    setPerIndexErrors(itemErrorsClone);
-    setTopLevelError(null);
-
-    const anyBad = Object.values(itemErrorsClone).some(Boolean);
-    if (anyBad) {
-      const firstIdx = Math.min(
-        ...Object.keys(itemErrorsClone)
-          .filter((k) => itemErrorsClone[Number(k)])
-          .map((k) => Number(k))
-      );
-      setExpanded((prev) => ({ ...prev, [firstIdx]: true }));
-      const first = itemErrorsClone[firstIdx];
-      let msg: string | null = null;
-      if (first) {
-        const keys = Object.keys(first)
-          .filter((k) => k !== "_errors") as EvidenceKey[];
-
-        for (const k of keys) {
-          const m = (first[k] as { _errors?: string[] })?._errors?.[0];
-
-          if (m) {
-            msg = `${t("cases:evidenceSection.errorPrefix")}${firstIdx + 1}: ${m}`;
-            break;
-          }
-        }
-      }
-      toast.error(msg ?? t("cases:messages.fixEvidenceErrors"));
-      return;
-    }
-
-    setTopLevelError(null);
     navigate("/user/cases/victims-suspects-reporters");
   }
 
@@ -574,12 +406,6 @@ export default function Evidence() {
             </button>
           </div>
 
-          {topLevelError && (
-            <div className="mb-3 rounded-md border border-[#fecaca] bg-[#fef2f2] px-3 py-2 text-[11px] font-medium text-[#dc2626]">
-              {topLevelError}
-            </div>
-          )}
-
           <div className="space-y-3 ">
             {caseData.evidence.map((item, index) => (
               <EvidenceCard
@@ -587,7 +413,6 @@ export default function Evidence() {
                 evidence={item}
                 cardIndex={index}
                 isExpanded={expanded[index] ?? index === caseData.evidence.length - 1}
-                errors={perIndexErrors[index] ?? null}
                 onToggleExpand={() =>
                   setExpanded((prev) => ({
                     ...prev,

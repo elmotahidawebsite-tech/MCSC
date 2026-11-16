@@ -17,8 +17,6 @@ import {
 import toast, { Toaster } from "react-hot-toast";
 import { useCase } from "@/context/CaseContext";
 import type { PersonData } from "@/context/CaseContext";
-import { caseInfoSchema } from "@/schemas/caseSchema";
-import type { ZodFormattedError } from "zod";
 import { GOVERNORATES_BILINGUAL } from "@/constants/governorates";
 import { mediaKind, formatSize, type MediaKind } from "@/utils/media";
 import { validateCaseFileSize } from "@/utils/caseFileSize";
@@ -316,25 +314,6 @@ function ReporterCard({
     );
 }
 
-type CaseInfoShape = {
-    caseId: string;
-    caseYear: string;
-    incidentType: string;
-    inspectionDate: string;
-    description: string;
-    governorate: string;
-    policeDepartment: string;
-    investigator: string;
-    locationName: string;
-    address: string;
-    locationGovernorate: string;
-    city: string;
-    district: string;
-    stationUsername?: string;
-};
-type CaseErrors = ZodFormattedError<CaseInfoShape>;
-type CaseKey = keyof CaseInfoShape;
-
 export default function CaseInfo() {
     const navigate = useNavigate();
     const { t, i18n } = useTranslation(["cases", "common"]);
@@ -347,7 +326,6 @@ export default function CaseInfo() {
     const [reporterExpanded, setReporterExpanded] = useState<
         Record<number, boolean>
     >({});
-    const [fieldErrors, setFieldErrors] = useState<CaseErrors | null>(null);
 
     function updateReporterField<K extends keyof PersonData>(
         index: number,
@@ -379,72 +357,17 @@ export default function CaseInfo() {
     const displayReporters =
         reporters.length > 0 ? reporters : [EMPTY_REPORTER];
 
-    function errFor(key: CaseKey): string | null {
-        if (!fieldErrors) return null;
-        const node = fieldErrors[key];
-        if (!node) return null;
-        const errs = (node as { _errors: string[] })._errors;
-        return Array.isArray(errs) ? errs[0] ?? null : null;
-    }
-
     const baseInput =
-        "h-10 w-full rounded-md border bg-white px-3 text-sm text-[#475569] outline-none placeholder:text-[#64748b] focus:ring-1 transition";
+        "h-10 w-full rounded-md border border-[#dbe5ec] bg-white px-3 text-sm text-[#475569] outline-none placeholder:text-[#64748b] focus:border-[#0089c7] focus:ring-1 focus:ring-[#0089c7]/20 transition";
     const baseSelect =
-        "h-10 w-full appearance-none rounded-md border bg-white px-3 pr-9 text-sm text-[#475569] outline-none focus:ring-1 transition";
+        "h-10 w-full appearance-none rounded-md border border-[#dbe5ec] bg-white px-3 pr-9 text-sm text-[#475569] outline-none focus:border-[#0089c7] focus:ring-1 focus:ring-[#0089c7]/20 transition";
     const baseTextarea =
-        "w-full resize-none rounded-md border bg-white px-3 py-3 text-sm text-[#475569] outline-none placeholder:text-[#64748b] focus:ring-1 transition";
-
-    function inputCls(key: CaseKey): string {
-        return errFor(key)
-            ? `${baseInput} border-[#fecaca] focus:border-[#dc2626] focus:ring-[#dc2626]/20`
-            : `${baseInput} border-[#dbe5ec] focus:border-[#0089c7] focus:ring-[#0089c7]/20`;
-    }
-    function selectCls(key: CaseKey): string {
-        return errFor(key)
-            ? `${baseSelect} border-[#fecaca] focus:border-[#dc2626] focus:ring-[#dc2626]/20`
-            : `${baseSelect} border-[#dbe5ec] focus:border-[#0089c7] focus:ring-[#0089c7]/20`;
-    }
-    function textareaCls(key: CaseKey): string {
-        return errFor(key)
-            ? `${baseTextarea} border-[#fecaca] focus:border-[#dc2626] focus:ring-[#dc2626]/20`
-            : `${baseTextarea} border-[#dbe5ec] focus:border-[#0089c7] focus:ring-[#0089c7]/20`;
-    }
+        "w-full resize-none rounded-md border border-[#dbe5ec] bg-white px-3 py-3 text-sm text-[#475569] outline-none placeholder:text-[#64748b] focus:border-[#0089c7] focus:ring-1 focus:ring-[#0089c7]/20 transition";
 
     const labelCls =
         "mb-2 block text-[13px] font-bold uppercase tracking-wider text-[#0875a8]";
 
-    function FieldError({ msg }: { msg: string | null }) {
-        if (!msg) return null;
-        return (
-            <p className="mt-1 sm:mt-1.5 text-[10px] sm:text-[11px] font-medium text-[#dc2626]">
-                {msg}
-            </p>
-        );
-    }
-
     function validateAndGoNext(): void {
-        const res = caseInfoSchema.safeParse(data);
-        if (!res.success) {
-            const formatted = res.error.format() as CaseErrors;
-            setFieldErrors(formatted);
-            const keys = Object.keys(formatted)
-                .filter((k) => k !== "_errors") as CaseKey[];
-
-            const firstKey = keys.find(
-                (k) =>
-                    (formatted[k] as { _errors?: string[] })?._errors?.length
-            );
-            if (firstKey) {
-                const firstMsg =
-                    (formatted[firstKey] as { _errors: string[] })._errors[0] ??
-                    t("cases:validation.checkHighlighted");
-                toast.error(firstMsg);
-            } else {
-                toast.error(t("cases:validation.fixErrorsBefore"));
-            }
-            return;
-        }
-        setFieldErrors(null);
         navigate("/user/cases/evidence");
     }
 
@@ -480,9 +403,8 @@ export default function CaseInfo() {
                                 type="text"
                                 value={data.caseId}
                                 onChange={(e) => updateCaseInfo({ caseId: e.target.value })}
-                                className={inputCls("caseId")}
+                                className={baseInput}
                             />
-                            <FieldError msg={errFor("caseId")} />
                         </div>
 
                         <div>
@@ -494,9 +416,8 @@ export default function CaseInfo() {
                                 value={data.caseYear}
                                 onChange={(e) => updateCaseInfo({ caseYear: e.target.value })}
                                 placeholder={t("cases:selects.caseYear")}
-                                className={inputCls("caseYear")}
+                                className={baseInput}
                             />
-                            <FieldError msg={errFor("caseYear")} />
                         </div>
 
                         <div>
@@ -510,7 +431,7 @@ export default function CaseInfo() {
                                             policeDepartment: "",
                                         });
                                     }}
-                                    className={selectCls("governorate")}
+                                    className={baseSelect}
                                 >
                                     <option value="">{t("cases:selects.selectGovernorate")}</option>
 
@@ -529,7 +450,6 @@ export default function CaseInfo() {
                                     className="pointer-events-none absolute right-3 top-1/2 -translate-y-1/2 text-[#64748b] hidden sm:block"
                                 />
                             </div>
-                            <FieldError msg={errFor("governorate")} />
                         </div>
 
                         <div>
@@ -543,7 +463,7 @@ export default function CaseInfo() {
                                         })
                                     }
                                     disabled={!data.governorate}
-                                    className={selectCls("policeDepartment")}
+                                    className={baseSelect}
                                 >
                                     <option value="">
                                         {data.governorate
@@ -562,7 +482,6 @@ export default function CaseInfo() {
                                     className="pointer-events-none absolute right-3 top-1/2 -translate-y-1/2 text-[#64748b]"
                                 />
                             </div>
-                            <FieldError msg={errFor("policeDepartment")} />
                         </div>
 
                         <div>
@@ -571,7 +490,7 @@ export default function CaseInfo() {
                                 <select
                                     value={data.incidentType}
                                     onChange={(e) => updateCaseInfo({ incidentType: e.target.value })}
-                                    className={selectCls("incidentType")}
+                                    className={baseSelect}
                                 >
                                     <option value="">{t("cases:selects.selectOption")}</option>
                                     <option value="kill">{t(`cases:incidentTypes.kill`)}</option>
@@ -583,9 +502,7 @@ export default function CaseInfo() {
                                     size={15}
                                     className="pointer-events-none absolute right-3 top-1/2 -translate-y-1/2 text-[#64748b]"
                                 />
-                            </div>
-                            <FieldError msg={errFor("incidentType")} />
-                        </div>
+                            </div></div>
 
                         <div>
                             <label className={labelCls}>{t("cases:labels.inspectionDate")} </label>
@@ -594,11 +511,9 @@ export default function CaseInfo() {
                                     type="date"
                                     value={data.inspectionDate}
                                     onChange={(e) => updateCaseInfo({ inspectionDate: e.target.value })}
-                                    className={`${inputCls("inspectionDate")}`}
+                                    className={`${baseInput}`}
                                 />
-                            </div>
-                            <FieldError msg={errFor("inspectionDate")} />
-                        </div>
+                            </div></div>
 
                         <div className="md:col-span-2 xl:col-span-2">
                             <label className={labelCls}>{t("cases:labels.investigator")}</label>
@@ -607,10 +522,8 @@ export default function CaseInfo() {
                                 value={data.investigator}
                                 onChange={(e) => updateCaseInfo({ investigator: e.target.value })}
                                 placeholder={t("cases:selects.fullname")}
-                                className={inputCls("investigator")}
-                            />
-                            <FieldError msg={errFor("investigator")} />
-                        </div>
+                                className={baseInput}
+                            /></div>
 
                         <div className="md:col-span-2 xl:col-span-3">
                             <label className={labelCls}>{t("cases:labels.description")}</label>
@@ -619,10 +532,8 @@ export default function CaseInfo() {
                                 value={data.description}
                                 onChange={(e) => updateCaseInfo({ description: e.target.value })}
                                 placeholder={t("cases:selects.incidentDescription")}
-                                className={textareaCls("description")}
-                            />
-                            <FieldError msg={errFor("description")} />
-                        </div>
+                                className={baseTextarea}
+                            /></div>
                     </div>
                 </section>
 
@@ -690,10 +601,8 @@ export default function CaseInfo() {
                                 value={data.locationName}
                                 onChange={(e) => updateCaseInfo({ locationName: e.target.value })}
                                 placeholder={t("cases:selects.e_gLocation")}
-                                className={inputCls("locationName")}
-                            />
-                            <FieldError msg={errFor("locationName")} />
-                        </div>
+                                className={baseInput}
+                            /></div>
 
                         <div>
                             <label className={labelCls}>
@@ -707,7 +616,7 @@ export default function CaseInfo() {
                                             locationGovernorate: e.target.value,
                                         })
                                     }
-                                    className={selectCls("locationGovernorate")}
+                                    className={baseSelect}
                                 >
                                     <option value="">{t("cases:selects.selectGovernorate")}</option>
                                     {Object.keys(GOVERNORATES_BILINGUAL).map((governorate) => (
@@ -720,9 +629,7 @@ export default function CaseInfo() {
                                     size={15}
                                     className="pointer-events-none absolute right-3 top-1/2 -translate-y-1/2 text-[#64748b]"
                                 />
-                            </div>
-                            <FieldError msg={errFor("locationGovernorate")} />
-                        </div>
+                            </div></div>
 
                         <div>
                             <label className={labelCls}>{t("cases:labels.city")}</label>
@@ -731,10 +638,8 @@ export default function CaseInfo() {
                                 value={data.city}
                                 onChange={(e) => updateCaseInfo({ city: e.target.value })}
                                 placeholder={t("cases:selects.city")}
-                                className={inputCls("city")}
-                            />
-                            <FieldError msg={errFor("city")} />
-                        </div>
+                                className={baseInput}
+                            /></div>
 
                         <div>
                             <label className={labelCls}>{t("cases:labels.district")}</label>
@@ -743,10 +648,8 @@ export default function CaseInfo() {
                                 value={data.district}
                                 onChange={(e) => updateCaseInfo({ district: e.target.value })}
                                 placeholder={t("cases:selects.district")}
-                                className={inputCls("district")}
-                            />
-                            <FieldError msg={errFor("district")} />
-                        </div>
+                                className={baseInput}
+                            /></div>
 
                         <div className="md:col-span-2">
                             <label className={labelCls}>{t("cases:labels.address")}</label>
@@ -755,10 +658,8 @@ export default function CaseInfo() {
                                 value={data.address}
                                 onChange={(e) => updateCaseInfo({ address: e.target.value })}
                                 placeholder={t("cases:selects.e_gStreet")}
-                                className={inputCls("address")}
-                            />
-                            <FieldError msg={errFor("address")} />
-                        </div>
+                                className={baseInput}
+                            /></div>
                     </div>
                 </section>
 
@@ -777,3 +678,4 @@ export default function CaseInfo() {
         </div>
     );
 }
+

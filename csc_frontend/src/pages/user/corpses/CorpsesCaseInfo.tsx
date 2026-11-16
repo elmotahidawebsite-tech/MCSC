@@ -14,65 +14,14 @@ import {
   ChevronDown,
 } from "lucide-react";
 import toast, { Toaster } from "react-hot-toast";
-import { z } from "zod";
 import { useCase } from "@/context/CaseContext";
-import type { CorpsesCaseInfo as CorpsesCaseInfoType } from "@/context/CaseContext";
-import type { ZodFormattedError } from "zod";
 import { GOVERNORATES_BILINGUAL } from "@/constants/governorates";
 
-const corpsesCaseInfoSchema = z.object({
-  caseNumber: z
-    .string().optional(),
-  caseYear: z.string().optional(),
-  governorate: z.string().optional(),
-  policeDepartment: z.string().optional(),
-  dateOfDiscovery: z
-    .string().optional(),
-  inspectionDate: z.string().optional(),
-  locationOfBodyPresence: z.string().optional(),
-  findingLocation: z.string().optional(),
-  photographyExpert: z.string().optional(),
-  fingerprintExpert: z.string().optional(),
-  note: z.string().optional(),
-});
+const inputCls = "h-10 sm:h-11 w-full rounded-lg border border-[#dbe5ec] bg-white pl-9 sm:pl-10 pr-3 text-xs sm:text-sm text-[#475569] outline-none placeholder:text-[#64748b] focus:border-[#0089c7] focus:ring-1 focus:ring-[#0089c7]/20 transition";
 
-type CorpsesCaseErrors = ZodFormattedError<CorpsesCaseInfoType>;
-type CorpsesCaseKey = keyof CorpsesCaseInfoType;
+const selectCls = "h-10 sm:h-11 w-full appearance-none rounded-lg border border-[#dbe5ec] bg-white px-3 pr-9 text-xs sm:text-sm text-[#475569] outline-none focus:border-[#0089c7] focus:ring-1 focus:ring-[#0089c7]/20 transition";
 
-function errFor(
-  errors: CorpsesCaseErrors | null,
-  key: CorpsesCaseKey
-): string | null {
-  if (!errors) return null;
-  const node = errors[key];
-  if (!node) return null;
-  const errs = (node as { _errors?: string[] })._errors;
-  return Array.isArray(errs) ? errs[0] ?? null : null;
-}
-
-function FieldError({ msg }: { msg: string | null }) {
-  if (!msg) return null;
-  return (
-    <p className="mt-1.5 text-[10px] sm:text-[11px] font-medium text-[#dc2626]">
-      {msg}
-    </p>
-  );
-}
-
-const inputCls = (hasError: boolean) =>
-  `h-10 sm:h-11 w-full rounded-lg border ${
-    hasError ? "border-[#fecaca] ring-1 ring-[#fecaca]" : "border-[#dbe5ec]"
-  } bg-white pl-9 sm:pl-10 pr-3 text-xs sm:text-sm text-[#475569] outline-none placeholder:text-[#64748b] focus:border-[#0089c7] focus:ring-1 focus:ring-[#0089c7]/20`;
-
-const selectCls = (hasError: boolean) =>
-  `h-10 sm:h-11 w-full appearance-none rounded-lg border ${
-    hasError ? "border-[#fecaca] ring-1 ring-[#fecaca]" : "border-[#dbe5ec]"
-  } bg-white px-3 pr-9 text-xs sm:text-sm text-[#475569] outline-none focus:border-[#0089c7] focus:ring-1 focus:ring-[#0089c7]/20`;
-
-const textareaCls = (hasError: boolean) =>
-  `w-full min-h-[110px] sm:min-h-[130px] resize-y rounded-lg border ${
-    hasError ? "border-[#fecaca] ring-1 ring-[#fecaca]" : "border-[#dbe5ec]"
-  } bg-white px-3 sm:px-4 py-3 text-xs sm:text-sm text-[#475569] outline-none placeholder:text-[#64748b] focus:border-[#0089c7] focus:ring-1 focus:ring-[#0089c7]/20`;
+const textareaCls = "w-full min-h-[110px] sm:min-h-[130px] resize-y rounded-lg border border-[#dbe5ec] bg-white px-3 sm:px-4 py-3 text-xs sm:text-sm text-[#475569] outline-none placeholder:text-[#64748b] focus:border-[#0089c7] focus:ring-1 focus:ring-[#0089c7]/20 transition";
 
 const labelCls =
   "mb-1.5 sm:mb-2 block text-[11px] sm:text-[12px] md:text-[13px] font-bold uppercase tracking-wider text-[#0875a8]";
@@ -87,7 +36,6 @@ export default function CorpsesCaseInfo() {
     useCase();
   const data = caseData.corpsesCaseInfo;
 
-  const [fieldErrors, setFieldErrors] = useState<CorpsesCaseErrors | null>(null);
   const [selectedGovernorate, setSelectedGovernorate] = useState<string>(
     data.governorate || ""
   );
@@ -96,34 +44,7 @@ export default function CorpsesCaseInfo() {
     setCaseType("corpses");
   }, [setCaseType]);
 
-  function hasErr(key: CorpsesCaseKey): boolean {
-    return !!errFor(fieldErrors, key);
-  }
-
   function validateAndGoNext(): void {
-    const res = corpsesCaseInfoSchema.safeParse(data);
-    if (!res.success) {
-      const formatted = res.error.format() as CorpsesCaseErrors;
-      setFieldErrors(formatted);
-      const keys = Object.keys(formatted).filter(
-        (k) => k !== "_errors"
-      ) as CorpsesCaseKey[];
-
-      const firstKey = keys.find(
-        (k) =>
-          (formatted[k] as { _errors?: string[] })?._errors?.length
-      );
-      if (firstKey) {
-        const firstMsg =
-          (formatted[firstKey] as { _errors: string[] })._errors[0] ??
-          t("cases:validation.checkHighlighted");
-        toast.error(firstMsg);
-      } else {
-        toast.error(t("cases:validation.fixErrorsBefore"));
-      }
-      return;
-    }
-    setFieldErrors(null);
     navigate("/user/corpses/specifications");
   }
 
@@ -178,10 +99,9 @@ export default function CorpsesCaseInfo() {
                     updateCorpsesCaseInfo({ caseNumber: e.target.value })
                   }
                   placeholder={t("cases:selects.caseCodeExample")}
-                  className={inputCls(hasErr("caseNumber"))}
+                  className={inputCls}
                 />
               </div>
-              <FieldError msg={errFor(fieldErrors, "caseNumber")} />
             </div>
 
             <div>
@@ -197,9 +117,8 @@ export default function CorpsesCaseInfo() {
                   updateCorpsesCaseInfo({ caseYear: e.target.value })
                 }
                 placeholder={t("cases:selects.caseYear")}
-                className={selectCls(hasErr("caseYear")).replace("appearance-none", "").replace("pr-9", "pr-3")}
+                className={selectCls.replace("appearance-none", "").replace("pr-9", "pr-3")}
               />
-              <FieldError msg={errFor(fieldErrors, "caseYear")} />
             </div>
 
             <div>
@@ -217,7 +136,7 @@ export default function CorpsesCaseInfo() {
                       policeDepartment: "",
                     });
                   }}
-                  className={selectCls(hasErr("governorate"))}
+                  className={selectCls}
                 >
                   <option value="">{t("cases:selects.selectGovernorate")}</option>
                   {Object.keys(GOVERNORATES_BILINGUAL).map((gov) => (
@@ -231,7 +150,6 @@ export default function CorpsesCaseInfo() {
                   className="pointer-events-none absolute right-3 top-1/2 -translate-y-1/2 text-[#64748b]"
                 />
               </div>
-              <FieldError msg={errFor(fieldErrors, "governorate")} />
             </div>
 
             <div>
@@ -247,7 +165,7 @@ export default function CorpsesCaseInfo() {
                     })
                   }
                   disabled={!selectedGovernorate}
-                  className={selectCls(hasErr("policeDepartment"))}
+                  className={selectCls}
                 >
                   <option value="">
                     {selectedGovernorate
@@ -266,7 +184,6 @@ export default function CorpsesCaseInfo() {
                   className="pointer-events-none absolute right-3 top-1/2 -translate-y-1/2 text-[#64748b]"
                 />
               </div>
-              <FieldError msg={errFor(fieldErrors, "policeDepartment")} />
             </div>
 
             <div>
@@ -284,10 +201,9 @@ export default function CorpsesCaseInfo() {
                   onChange={(e) =>
                     updateCorpsesCaseInfo({ dateOfDiscovery: e.target.value })
                   }
-                  className={inputCls(hasErr("dateOfDiscovery"))}
+                  className={inputCls}
                 />
               </div>
-              <FieldError msg={errFor(fieldErrors, "dateOfDiscovery")} />
             </div>
 
             <div>
@@ -305,10 +221,9 @@ export default function CorpsesCaseInfo() {
                   onChange={(e) =>
                     updateCorpsesCaseInfo({ inspectionDate: e.target.value })
                   }
-                  className={inputCls(hasErr("inspectionDate"))}
+                  className={inputCls}
                 />
               </div>
-              <FieldError msg={errFor(fieldErrors, "inspectionDate")} />
             </div>
 
             <div className="md:col-span-2">
@@ -329,10 +244,9 @@ export default function CorpsesCaseInfo() {
                     })
                   }
                   placeholder={t("cases:selects.morgueHospitalEtc")}
-                  className={inputCls(hasErr("locationOfBodyPresence"))}
+                  className={inputCls}
                 />
               </div>
-              <FieldError msg={errFor(fieldErrors, "locationOfBodyPresence")} />
             </div>
 
             <div className="md:col-span-2">
@@ -348,13 +262,10 @@ export default function CorpsesCaseInfo() {
                     updateCorpsesCaseInfo({ findingLocation: e.target.value })
                   }
                   placeholder={t("cases:selects.findingLocationDetail")}
-                  className={`${textareaCls(
-                    hasErr("findingLocation")
-                  )} pl-9 sm:pl-10`}
+                  className={`${textareaCls} pl-9 sm:pl-10`}
                   rows={3}
                 />
               </div>
-              <FieldError msg={errFor(fieldErrors, "findingLocation")} />
             </div>
           </div>
 
@@ -386,10 +297,9 @@ export default function CorpsesCaseInfo() {
                         photographyExpert: e.target.value,
                       })
                     }
-                    className={inputCls(hasErr("photographyExpert"))}
+                    className={inputCls}
                   />
                 </div>
-                <FieldError msg={errFor(fieldErrors, "photographyExpert")} />
               </div>
 
               <div>
@@ -407,10 +317,9 @@ export default function CorpsesCaseInfo() {
                     onChange={(e) =>
                       updateCorpsesCaseInfo({ fingerprintExpert: e.target.value })
                     }
-                    className={inputCls(hasErr("fingerprintExpert"))}
+                    className={inputCls}
                   />
                 </div>
-                <FieldError msg={errFor(fieldErrors, "fingerprintExpert")} />
               </div>
 
               <div className="md:col-span-2">
@@ -421,10 +330,9 @@ export default function CorpsesCaseInfo() {
                     updateCorpsesCaseInfo({ note: e.target.value })
                   }
                   placeholder="Enter details of the circumstances surrounding the finding of the deceased..."
-                  className={textareaCls(hasErr("note"))}
+                  className={textareaCls}
                   rows={5}
                 />
-                <FieldError msg={errFor(fieldErrors, "note")} />
               </div>
             </div>
           </div>
@@ -452,3 +360,4 @@ export default function CorpsesCaseInfo() {
     </div>
   );
 }
+
