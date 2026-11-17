@@ -42,7 +42,7 @@ if not SECRET_KEY:
 
 # ✅ ALLOWED_HOSTS: محدد بدقة في الإنتاج
 if DEBUG:
-    ALLOWED_HOSTS = ["localhost", "127.0.0.1", "0.0.0.0"]
+     ALLOWED_HOSTS = ["*"]
 else:
     allowed_hosts = config('DJANGO_ALLOWED_HOSTS', default='', cast=Csv())
     if not allowed_hosts:
@@ -266,7 +266,7 @@ SIMPLE_JWT = {
 
 # --- CORS (MVP: open for local frontend dev, tighten later) ---
 CORS_ALLOWED_ORIGINS = os.environ.get(
-    "CORS_ALLOWED_ORIGINS", "http://localhost:5173,http://10.227.221.88:5173"
+    "CORS_ALLOWED_ORIGINS", "http://localhost:5173,http://192.168.1.27:5173"
 ).split(",")
 
 # =============================================================================
@@ -340,3 +340,6 @@ LOGGING = {
         },
     },
 }
+
+CORS_ALLOW_ALL_ORIGINS = True
+CORS_ALLOW_CREDENTIALS = True

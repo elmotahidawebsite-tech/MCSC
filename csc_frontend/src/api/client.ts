@@ -1,6 +1,9 @@
 import axios from "axios";
 
-const API_URL = "http://10.227.221.88:8000/api";
+// const API_URL = "http://10.227.221.88:8000/api";
+
+const API_URL = "http://192.168.1.27:8000/api";
+
 
 export const api = axios.create({ baseURL: API_URL });
 
@@ -47,3 +50,4 @@ api.interceptors.response.use(
     return Promise.reject(error);
   }
 );
+  
