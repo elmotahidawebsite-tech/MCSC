@@ -8,6 +8,9 @@ import {
   Save,
   Trash2,
 } from "lucide-react";
+import { usePermissions } from "@/hooks/usePermissions";
+import { LoadingScreen } from "@/components/common/LoadingScreen";
+import { sanitizeFilename } from "@/utils/download";
 import type {
   CaseData,
   CorpsesSpecifications,
@@ -54,10 +57,12 @@ export default function AdminCaseDetail() {
     const { id } = useParams();
     const navigate = useNavigate();
     const { t } = useTranslation(["cases", "common"]);
+    const { canDeleteCase, canEditCase, canExportCase } = usePermissions();
 
     const [showDeleteModal, setShowDeleteModal] = useState(false);
     const [data, setData] = useState<CaseData | null>(null);
     const [loading, setLoading] = useState(true);
+    const [error, setError] = useState<string | null>(null);
     const [deleting, setDeleting] = useState(false);
     const [savedStamp, setSavedStamp] = useState<string | null>(null);
     const [stationUsername, setStationUsername] = useState<string>("");
@@ -74,6 +79,8 @@ export default function AdminCaseDetail() {
 
       (async () => {
         try {
+          setLoading(true);
+          setError(null);
           setStationUsername("");
           const { data: c } = await api.get(`/cases/${id}/`);
           if (cancelled) return;
@@ -257,9 +264,16 @@ export default function AdminCaseDetail() {
             corpses: bodiesArr.map((b: any) => b.id ?? null),
           });
           setSavedStamp(JSON.stringify(normalizeForCompare(converted, newRemoteImages)));
-        } catch (e) {
-          console.error(e);
-          toast.error(t("cases:review.failedToLoad"));
+        } catch (e: any) {
+          if (!cancelled) {
+            const errorMsg = e?.response?.status === 404 
+              ? t("cases:review.caseNotFound")
+              : e?.response?.status === 403
+              ? t("cases:review.accessDenied")
+              : t("cases:review.failedToLoad");
+            setError(errorMsg);
+            toast.error(errorMsg);
+          }
         } finally {
           if (!cancelled) setLoading(false);
         }
@@ -294,7 +308,6 @@ export default function AdminCaseDetail() {
         setShowDeleteModal(false);
         navigate("/admin/cases");
       } catch (e: any) {
-        console.error(e);
         const status = e?.response?.status;
         const msg = status === 403
           ? "مفيش صلاحية للحذف — الأدمن بس."
@@ -891,7 +904,6 @@ export default function AdminCaseDetail() {
           window.location.reload();
         }, 800);
       } catch (e: any) {
-        console.error(e);
         const detail = e?.response?.data;
         const msg = detail
           ? `فشل الحفظ: ${JSON.stringify(detail).slice(0, 200)}`
@@ -912,25 +924,20 @@ export default function AdminCaseDetail() {
           ? (data?.civilCaseInfo.caseNumber || id)
           : (data?.caseInfo.caseId || id);
         a.href = url;
-        a.download = `Case_${downloadName}.zip`;
+        a.download = sanitizeFilename(`Case_${downloadName}.zip`);
         a.click();
         URL.revokeObjectURL(url);
         toast.success("Case bundle downloaded successfully.", { duration: 2500 });
       } catch (e) {
-        console.error(e);
         toast.error(t("cases:review.failedToDownload"));
       }
     }
 
     if (loading) {
-      return (
-        <div className="min-h-full flex items-center justify-center py-20">
-          <div className="text-sm text-gray-500">{t("cases:review.loadingCase")}</div>
-        </div>
-      );
+      return <LoadingScreen />;
     }
 
-    if (!data) {
+    if (error || !data) {
       return (
         <div className="min-h-full flex items-center justify-center py-20">
           <Toaster position="top-right" />
@@ -938,7 +945,9 @@ export default function AdminCaseDetail() {
             <div className="mx-auto mb-6 flex h-16 w-16 items-center justify-center rounded-2xl bg-rose-50 text-rose-500">
               <Trash2 size={32} strokeWidth={2} />
             </div>
-            <h1 className="text-2xl font-bold text-gray-900 mb-3">{t("cases:review.caseNotFound")}</h1>
+            <h1 className="text-2xl font-bold text-gray-900 mb-3">
+              {error || t("cases:review.caseNotFound")}
+            </h1>
             <p className="text-sm text-gray-500 mb-2">{t("cases:review.caseNotFoundDesc")}</p>
             <p className="text-xs text-gray-400 mb-8 font-mono">{t("cases:review.requestedId")}: {id ?? "—"}</p>
             <button onClick={() => navigate("/admin/cases")} className="h-12 px-6 rounded-2xl bg-[#005588] text-white inline-flex items-center justify-center gap-2 text-sm font-semibold hover:bg-[#004670] shadow-lg shadow-[#005588]/20 transition">
@@ -950,16 +959,16 @@ export default function AdminCaseDetail() {
       );
     }
 
-    const info = data.caseInfo;
-    const isCorpses = data.caseType === "corpses";
-    const isCivil = data.caseType === "civil";
-    const corpsesInfo = data.corpsesCaseInfo;
-    const civilInfo = data.civilCaseInfo;
+    const info = data?.caseInfo ?? {};
+    const isCorpses = data?.caseType === "corpses";
+    const isCivil = data?.caseType === "civil";
+    const corpsesInfo = data?.corpsesCaseInfo ?? {};
+    const civilInfo = data?.civilCaseInfo ?? {};
     const displayCaseTitle = isCorpses
-      ? (corpsesInfo.caseNumber || `#${id ?? "—"}`)
+      ? (corpsesInfo?.caseNumber || `#${id ?? "—"}`)
       : isCivil
-      ? (civilInfo.caseNumber || `#${id ?? "—"}`)
-      : (info.caseId || `#${id ?? "—"}`);
+      ? (civilInfo?.caseNumber || `#${id ?? "—"}`)
+      : (info?.caseId || `#${id ?? "—"}`);
 
     const typeBadge = isCorpses
       ? "bg-rose-50 text-rose-600 border-rose-200"
@@ -1024,25 +1033,29 @@ export default function AdminCaseDetail() {
           </div>
 
           <div className="flex items-center gap-3 flex-wrap">
-            {dirty && (
+            {canEditCase && dirty && (
               <button onClick={saveChanges} className="h-11 px-5 rounded-2xl bg-emerald-600 text-white inline-flex items-center gap-2 text-sm font-semibold hover:bg-emerald-700 shadow-lg shadow-emerald-600/20 transition">
                 <Save size={17} />
                 {t("cases:review.saveChanges")}
               </button>
             )}
-            <button onClick={() => { void handleDownload(); }} className="h-11 px-6 rounded-2xl bg-[#005588] text-white inline-flex items-center gap-2 text-sm font-semibold hover:bg-[#004670] shadow-lg shadow-[#005588]/20 transition">
-              <Download size={17} />
-              {t("cases:review.downloadCase")}
-            </button>
-            <button
-              onClick={openDeleteModal}
-              disabled={deleting}
-              className="h-11 px-5 rounded-2xl border-2 border-rose-300 bg-white text-rose-600 inline-flex items-center gap-2 text-sm font-semibold hover:bg-rose-50 hover:border-rose-400 shadow-sm transition disabled:opacity-50 disabled:cursor-not-allowed"
-              title="حذف القضية نهائيًا"
-              >
-              <Trash2 size={17} />
-              {t("cases:review.deleteCase")}
-            </button>
+            {canExportCase && (
+              <button onClick={() => { void handleDownload(); }} className="h-11 px-6 rounded-2xl bg-[#005588] text-white inline-flex items-center gap-2 text-sm font-semibold hover:bg-[#004670] shadow-lg shadow-[#005588]/20 transition">
+                <Download size={17} />
+                {t("cases:review.downloadCase")}
+              </button>
+            )}
+            {canDeleteCase && (
+              <button
+                onClick={openDeleteModal}
+                disabled={deleting}
+                className="h-11 px-5 rounded-2xl border-2 border-rose-300 bg-white text-rose-600 inline-flex items-center gap-2 text-sm font-semibold hover:bg-rose-50 hover:border-rose-400 shadow-sm transition disabled:opacity-50 disabled:cursor-not-allowed"
+                title="حذف القضية نهائيًا"
+                >
+                <Trash2 size={17} />
+                {t("cases:review.deleteCase")}
+              </button>
+            )}
           </div>
         </div>
 

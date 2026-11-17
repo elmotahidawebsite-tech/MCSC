@@ -11,4 +11,5 @@ env/
 logs/
 *.log
 schema.yaml
+test_logout.py
 schema_check.yaml

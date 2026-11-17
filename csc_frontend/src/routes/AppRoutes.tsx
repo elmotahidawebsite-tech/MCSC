@@ -15,6 +15,7 @@ import Evidence from "../pages/user/ciriminal/Evidence";
 import Review from "../pages/user/ciriminal/Review";
 import AdminCaseDetail from "../pages/admin/criminal/CaseDetail";
 import Unauthorized from "../pages/Unauthorized";
+import AdminCorpsesReview from "../pages/admin/corpses/AdminCorpsesReview";
 import CorpsesCaseInfo from "../pages/user/corpses/CorpsesCaseInfo";
 import CorpsesSpecifications from "../pages/user/corpses/CorpsesSpecifications";
 import CorpsesReview from "../pages/user/corpses/CorpsesReview";
@@ -64,6 +65,11 @@ export default function AppRoutes() {
             <Route
               path="/admin/cases/:caseId/civil/review"
               element={<AdminCivilReview />}
+            />
+            
+            <Route
+              path="/admin/cases/:caseId/corpses/review"
+              element={<AdminCorpsesReview />}
             />
 
             <Route

@@ -9,6 +9,8 @@ import {
   User,
   Camera,
 } from "lucide-react";
+import toast from "react-hot-toast";
+import { validateUploadSize } from "@/utils/media";
 import type {
   CaseData,
   CivilCaseInfo,
@@ -63,7 +65,23 @@ export default function CivilCaseDetail({
   remoteImages: RemoteImages;
   handlers: CivilHandlers;
 }) {
-  const info = data.civilCaseInfo;
+  const info = data?.civilCaseInfo ?? {
+    caseNumber: "",
+    caseYear: "",
+    dateOfReceipt: "",
+    receiptAuthority: "",
+    dateOfTransfer: "",
+    transferredAuthority: "",
+    governorate: "",
+    fingerprintType: "",
+    fingerprintHolder: "",
+    comparisonDocument: "",
+    typeOfComparisonDocument: "",
+    expert: "",
+    photographer: "",
+    notes: "",
+    images: [],
+  };
   const civilImagesFileRef = useRef<HTMLInputElement | null>(null);
   const { t } = useTranslation(["cases", "common"]);
 
@@ -94,11 +112,25 @@ export default function CivilCaseDetail({
 
   function onPickCivilImages(e: React.ChangeEvent<HTMLInputElement>) {
     const files = Array.from(e.target.files || []);
+    if (files.length === 0) return;
+    
+    // Validate combined size (new files + existing files)
+    const existingFiles = info?.images ?? [];
+    const validation = validateUploadSize(files, existingFiles);
+    
+    if (!validation.isValid) {
+      toast.error(validation.errorMessage || "File size limit exceeded");
+      if (civilImagesFileRef.current) civilImagesFileRef.current.value = "";
+      return;
+    }
+    
     files.forEach((f) => handlers.handleCivilImageAction("add", f));
     if (civilImagesFileRef.current) civilImagesFileRef.current.value = "";
   }
 
-  const civilRemoteImages = remoteImages.civilImages ?? [];
+  const civilRemoteImages = Array.isArray(remoteImages?.civilImages) 
+    ? remoteImages.civilImages.filter(img => img && img.url) 
+    : [];
 
   return (
     <>
@@ -253,7 +285,7 @@ export default function CivilCaseDetail({
                       );
                     })}
 
-                    {info.images.map((f, i) => {
+                    {(info?.images ?? []).map((f, i) => {
                       const kind = guessMediaKind({ type: f.type, name: f.name });
                       return (
                         <MediaTile
@@ -286,15 +318,14 @@ export default function CivilCaseDetail({
                     onChange={onPickCivilImages}
                   />
 
-                  {civilRemoteImages.length === 0 && info.images.length === 0 ? (
+                  {civilRemoteImages.length === 0 && (info?.images ?? []).length === 0 ? (
                     <p className="text-xs text-slate-400 mt-1">
                       No files attached yet
                     </p>
                   ) : (
                     <p className="text-xs text-slate-500 mt-1">
-                      {civilRemoteImages.length + info.images.length} file
-                      {(civilRemoteImages.length + info.images.length) !== 1 ? "s" : ""} attached
-                      {civilRemoteImages.length + info.images.length}
+                      {civilRemoteImages.length + (info?.images ?? []).length} file
+                      {(civilRemoteImages.length + (info?.images ?? []).length) !== 1 ? "s" : ""} attached
                     </p>
                   )}
                 </div>

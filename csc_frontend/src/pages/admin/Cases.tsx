@@ -5,6 +5,7 @@ import { useTranslation } from "react-i18next";
 import toast, { Toaster } from "react-hot-toast";
 import { api } from "../../api/client";
 import {  useSearchParams } from "react-router-dom";
+import { usePermissions } from "@/hooks/usePermissions";
 
 const PAGE_SIZE = 20;
 
@@ -33,6 +34,7 @@ export default function Cases() {
   const { t, i18n } = useTranslation(["cases", "common"]);
   const isRtl = i18n.resolvedLanguage === "ar";
   const ALL_STATIONS = t("cases:filters.allStations");
+  const { canImportCase } = usePermissions();
 
   const [stations, setStations] = useState<string[]>([ALL_STATIONS]);
   const [searchParams] = useSearchParams();
@@ -61,7 +63,7 @@ export default function Cases() {
         const names = (data ?? []).map((u: any) => u.username);
         setStations([ALL_STATIONS, ...names]);
       } catch (e) {
-        console.error("Failed fetching users:", e);
+        // Error loading stations - will continue with empty list
       }
     })();
   }, [ALL_STATIONS]);
@@ -92,7 +94,7 @@ export default function Cases() {
           setTotalCount(data.count ?? 0);
         }
       } catch (e) {
-        console.error(e);
+        // Error loading cases - user will see error from API interceptor
       } finally {
         if (!cancelled) {
           setLoading(false);
@@ -278,23 +280,27 @@ export default function Cases() {
                 {t("cases:repository.subtitleStations")}
               </p>
             </div>
-
-            <button
-              type="button"
-              onClick={() => importFileRef.current?.click()}
-              disabled={importing}
-              className={`inline-flex h-11 items-center gap-2 rounded-2xl bg-emerald-600 px-5 text-sm font-semibold text-white shadow-lg shadow-emerald-600/20 transition hover:bg-emerald-700 disabled:opacity-50 disabled:cursor-not-allowed ${isRtl ? "flex-row-reverse" : ""}`}
-            >
-              <Upload size={17} />
-              {importing ? t("cases:import.inProgress") : t("cases:import.button")}
-            </button>
-            <input
-              ref={importFileRef}
-              type="file"
-              accept=".json,.zip,application/json,application/zip"
-              className="hidden"
-              onChange={handleImport}
-            />
+              
+            {/* {canImportCase && (
+              <>
+                <button
+                  type="button"
+                  onClick={() => importFileRef.current?.click()}
+                  disabled={importing}
+                  className={`inline-flex h-11 items-center gap-2 rounded-2xl bg-emerald-600 px-5 text-sm font-semibold text-white shadow-lg shadow-emerald-600/20 transition hover:bg-emerald-700 disabled:opacity-50 disabled:cursor-not-allowed ${isRtl ? "flex-row-reverse" : ""}`}
+                >
+                  <Upload size={17} />
+                  {importing ? t("cases:import.inProgress") : t("cases:import.button")}
+                </button>
+                <input
+                  ref={importFileRef}
+                  type="file"
+                  accept=".json,.zip,application/json,application/zip"
+                  className="hidden"
+                  onChange={handleImport}
+                />
+              </>
+            )} */}
           </div>
         </div>
 

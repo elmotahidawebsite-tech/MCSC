@@ -166,23 +166,21 @@ export function findCaseById(id: string): CaseRecord | null {
 const MOCK_MARKER = "MAI-MOCK-URL::";
 
 function makePersonImage(prompt: string): File {
-  const url = `https://coresg-normal.trae.ai/api/ide/v1/text_to_image?prompt=${encodeURIComponent(
-    `professional ID photograph portrait of ${prompt}, neutral background, 300x300 passport style`
-  )}&image_size=square`;
+  // E7: سيادة البيانات — لا دومين خارجي (trae.ai) في الـ bundle. الـ mock ما بيجيبش
+  //      الشبكة أصلًا (File نصي فيه marker + رابط معلوماتي)، فنستبدل الرابط بمسار محلي
+  //      placeholder ⇒ صفر external في dist، وحتى لو مستهلك قرأ الـ marker وحاول يحمّله
+  //      الهي 404 على originنا مش على مزود خارجي.
+  const slug = prompt.replace(/\s+/g, "_");
+  const url = `/mock-assets/person_${slug}.jpg`;
   const blob = new Blob([MOCK_MARKER + url], { type: "text/plain" });
-  return new File([blob], `${prompt.replace(/\s+/g, "_")}.jpg`, {
-    type: "image/jpeg",
-  });
+  return new File([blob], `${slug}.jpg`, { type: "image/jpeg" });
 }
 
 function makeEvidenceImage(prompt: string): File {
-  const url = `https://coresg-normal.trae.ai/api/ide/v1/text_to_image?prompt=${encodeURIComponent(
-    `forensic evidence photo, ${prompt}, evidence table, professional lighting, 300x300`
-  )}&image_size=square`;
+  const slug = prompt.replace(/\s+/g, "_");
+  const url = `/mock-assets/evidence_${slug}.jpg`;
   const blob = new Blob([MOCK_MARKER + url], { type: "text/plain" });
-  return new File([blob], `evidence_${prompt.replace(/\s+/g, "_")}.jpg`, {
-    type: "image/jpeg",
-  });
+  return new File([blob], `evidence_${slug}.jpg`, { type: "image/jpeg" });
 }
 
 function buildPersonFromSeed(seed: number, variant: "victim" | "suspect" | "reporter"): PersonData {

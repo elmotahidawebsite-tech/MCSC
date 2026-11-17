@@ -103,27 +103,17 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   }, []);
 
   async function login(data: LoginRequest): Promise<User> {
-  await loginApi(data);
-  console.log("1. LOGIN SUCCESS");
+    await loginApi(data);
 
-  try {
-    const me = await fetchMe();
-    console.log("2. USER FROM API:", me);
-
-    saveOfflineUser(me);
-
-    console.log(
-      "3. SAVED USER:",
-      localStorage.getItem("csc_offline_user")
-    );
-
-    setUser(me);
-    return me;
-  } catch (error) {
-    console.error("FETCH ME ERROR:", error);
-    throw error;
+    try {
+      const me = await fetchMe();
+      saveOfflineUser(me);
+      setUser(me);
+      return me;
+    } catch (error) {
+      throw error;
+    }
   }
-}
 
   function logout() {
     logoutApi();

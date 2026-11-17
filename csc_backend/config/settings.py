@@ -5,7 +5,8 @@ import logging
 import os
 from datetime import timedelta
 from pathlib import Path
-from decouple import config, Csv
+from decouple import config
+from django.core.exceptions import ImproperlyConfigured  # E2/E3: للحارس
 import secrets
 
 
@@ -13,59 +14,40 @@ logger = logging.getLogger("csc")
 
 BASE_DIR = Path(__file__).resolve().parent.parent
 
-# =============================================================================
-# SECURITY SETTINGS - Production Ready
-# =============================================================================
+# ── B0 env-contract (E1–E4) ──────────────────────────────────────────────
+# الغرض: لا سر/مضيف/وضع debug مٌقسّى. على VPS مكشوف التلاتة بيحددوا هل
+#   يتزوَّر الـ Host (E1)، يتسرَّب traceback (E2)، أو يُزوَّر JWT أدمن (E3).
+# الملفات_related: .env (محلي DEBUG=True / سيرفر DEBUG=False)، 📗 5.1
+#   DB_* — التبديل dev↔prod = تغيير env بس، صفر تعديل كود.
 
-# ✅ DEBUG: False افتراضيًا في الإنتاج
-# بتقرأ من .env أو متغيرات البيئة
-DEBUG = config('DJANGO_DEBUG', default=False, cast=bool)
+# E3: بلا fallback — لو مش متظبط، الحارس تحت هيرفض الإقلاع (مش هيشتغل بالسر الافتراضي)
+SECRET_KEY = os.environ.get("DJANGO_SECRET_KEY")
 
-# ✅ SECRET_KEY: لازم يكون من .env في الإنتاج
-SECRET_KEY = config('DJANGO_SECRET_KEY', default=None)
+# E2: الافتراضي False (الوضع الآمن هو الافتراضي)، مش True
+DEBUG = os.environ.get("DJANGO_DEBUG", "False").strip().lower() in ("1", "true", "yes")
 
-if not SECRET_KEY:
-    if DEBUG:
-        # في التطوير: نولد مفتاح عشوائي مؤقت (أأمن من ثابت)
-        import secrets
-        SECRET_KEY = "dev-" + secrets.token_urlsafe(40)
-        logger.warning("Generated temporary SECRET_KEY for development. Set DJANGO_SECRET_KEY in .env for consistency.")
-    else:
-        # في الإنتاج: نفشل فورًا
-        raise RuntimeError(
-            "❌ CRITICAL: DJANGO_SECRET_KEY is not set!\n"
-            "Generate one with:\n"
-            '  python -c "from django.core.management.utils import get_random_secret_key; print(get_random_secret_key())"\n'
-            "Then add it to your .env file:\n"
-            "  DJANGO_SECRET_KEY=your-generated-key"
-        )
+# E1: من env، مش "*" — فاصل/فراغ بيتشال
+#   ⚠️ وإصلاح bug: os.environ.get بياخد 2 args بس؛ السطر المعلّق القديم كان
+#   بيحط 3 (مفتاح + 2 default) => لو اتفك كان هيرمي TypeError. هنا القراءة صح.
+ALLOWED_HOSTS = [
+    h.strip()
+    for h in os.environ.get("DJANGO_ALLOWED_HOSTS", "").split(",")
+    if h.strip()
+]
 
-# ✅ ALLOWED_HOSTS: محدد بدقة في الإنتاج
-if DEBUG:
-     ALLOWED_HOSTS = ["*"]
-else:
-    allowed_hosts = config('DJANGO_ALLOWED_HOSTS', default='', cast=Csv())
-    if not allowed_hosts:
-        raise RuntimeError(
-            "❌ CRITICAL: DJANGO_ALLOWED_HOSTS is not set!\n"
-            "Add it to your .env file:\n"
-            "  DJANGO_ALLOWED_HOSTS=yourdomain.com,api.yourdomain.com"
-        )
-    ALLOWED_HOSTS = allowed_hosts
 
-# ✅ Security Headers (تعمل تلقائيًا في الإنتاج)
-if not DEBUG:
-    SECURE_SSL_REDIRECT = True
-    SESSION_COOKIE_SECURE = True
-    CSRF_COOKIE_SECURE = True
-    SECURE_HSTS_SECONDS = 31536000
-    SECURE_HSTS_INCLUDE_SUBDOMAINS = True
-    SECURE_HSTS_PRELOAD = True
-    SECURE_CONTENT_TYPE_NOSNIFF = True
-    X_FRAME_OPTIONS = "DENY"
+# E2/E3 guard: إنتاج (DEBUG=False) من غير سر = إقلاع ممنوع
+if not DEBUG and not SECRET_KEY:
+    raise ImproperlyConfigured(
+        "DJANGO_SECRET_KEY مطلوب لما DJANGO_DEBUG=False — متشغّلش الإنتاج بالسر الافتراضي."
+    )
 
-# ✅ مفتاح JWT منفصل (اختياري)
-JWT_SIGNING_KEY = config('JWT_SIGNING_KEY', default=SECRET_KEY)
+# E3-dev: في التطوير (DEBUG=True) من غير سر → ولّد مؤقت عشان Django نفسه يحتاجه
+# (مش fallback ثابت زي قبل — ده value عشوائي per-process، ما يتسرّبش ولا يتكرر)
+if DEBUG and not SECRET_KEY:
+    SECRET_KEY = "dev-only-" + secrets.token_urlsafe(50)
+    logger.warning("⚠️ SECRET_KEY مؤقت للتطوير فقط — حط DJANGO_SECRET_KEY في .env المحلي")
+
 INSTALLED_APPS = [
     "django.contrib.admin",
     "django.contrib.auth",
@@ -265,9 +247,14 @@ SIMPLE_JWT = {
 }
 
 # --- CORS (MVP: open for local frontend dev, tighten later) ---
-CORS_ALLOWED_ORIGINS = os.environ.get(
-    "CORS_ALLOWED_ORIGINS", "http://localhost:5173,http://192.168.1.27:5173"
-).split(",")
+# --- CORS (E4: الافتراضي فاضي؛ النطاقات المنشورة من env) ---
+# ملاحظة: الفرونت هيخدم من نفس الـ domain خلف Caddy (same-origin)، فـ CORS
+# غالباً مش مطلوب في prod. بس env-switchable للاحتياط ولأي dev منفصل.
+CORS_ALLOWED_ORIGINS = [
+    o.strip()
+    for o in os.environ.get("CORS_ALLOWED_ORIGINS", "").split(",")
+    if o.strip()
+]
 
 # =============================================================================
 # LOGGING - OPS-004: تسجيل مركزي (ملفين: info + error)

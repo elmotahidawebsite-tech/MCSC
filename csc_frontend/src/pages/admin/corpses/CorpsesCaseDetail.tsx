@@ -87,14 +87,15 @@ function CorpseEditableCard({
   onImageAction: (action: "add" | "remove" | "remove-new", payload?: unknown) => void;
 }) {
   const { t } = useTranslation(["cases", "common"]);
-  const headerGender = genderLabel(corpse.gender);
-  const headerAge = corpse.approximateAge ? `${corpse.approximateAge} yrs` : "No Age";
+  const headerGender = genderLabel(corpse?.gender ?? "");
+  const headerAge = corpse?.approximateAge ? `${corpse.approximateAge} yrs` : "No Age";
 
   function patch<K extends keyof CorpsesSpecifications>(key: K, v: CorpsesSpecifications[K]) {
     onPatch({ [key]: v } as Partial<CorpsesSpecifications>);
   }
 
-  console.log(corpse);
+  const safeBiologicalSample = Array.isArray(corpse?.biologicalSample) ? corpse.biologicalSample : [];
+  const safeImages = Array.isArray(corpse?.images) ? corpse.images : [];
 
   return (
     <div className="rounded-2xl border border-slate-200 bg-white p-5">
@@ -142,7 +143,7 @@ function CorpseEditableCard({
             <div>
               {labeled(t("cases:labels.gender"))}
               <select
-                value={corpse.gender}
+                value={corpse?.gender ?? ""}
                 onChange={(e) => patch("gender", e.target.value)}
                 className={inputBase()}
               >
@@ -155,7 +156,7 @@ function CorpseEditableCard({
             <div>
               {labeled(t("cases:labels.approximateAge"))}
               <select
-                value={corpse.approximateAge}
+                value={corpse?.approximateAge ?? ""}
                 onChange={(e) => patch("approximateAge", e.target.value)}
                 className={inputBase()}
               >
@@ -167,13 +168,13 @@ function CorpseEditableCard({
             </div>
             <EditableField  
               label={t("cases:labels.approximateHeight")}
-              value={corpse.approximateHeight}
+              value={corpse?.approximateHeight ?? ""}
               onChange={(v) => patch("approximateHeight", v)}
             />
             <div>
               {labeled(t("cases:labels.weight"))}
               <select
-                value={corpse.weight}
+                value={corpse?.weight ?? ""}
                 onChange={(e) => patch("weight", e.target.value)}
                 className={inputBase()}
               >
@@ -188,13 +189,13 @@ function CorpseEditableCard({
           <div className="grid grid-cols-1 gap-5 md:grid-cols-2">
             <EditableField
               label={t("cases:labels.discoveryCircumstances")}
-              value={corpse.discoveryCircumstances}
+              value={corpse?.discoveryCircumstances ?? ""}
               onChange={(v) => patch("discoveryCircumstances", v)}
               textarea
             />
             <EditableField
               label={t("cases:labels.distinguishingMarks")}
-              value={corpse.distinguishingMarks}
+              value={corpse?.distinguishingMarks ?? ""}
               onChange={(v) => patch("distinguishingMarks", v)}
               textarea
             />
@@ -203,13 +204,13 @@ function CorpseEditableCard({
           <div className="grid grid-cols-1 gap-5 md:grid-cols-2">
             <EditableField
               label={t("cases:labels.underwear")}
-              value={corpse.underwear}
+              value={corpse?.underwear ?? ""}
               onChange={(v) => patch("underwear", v)}
               textarea
             />
             <EditableField
               label={t("cases:labels.outerwear")}
-              value={corpse.outerwear}
+              value={corpse?.outerwear ?? ""}
               onChange={(v) => patch("outerwear", v)}
               textarea
             />
@@ -219,7 +220,7 @@ function CorpseEditableCard({
             <div>
               {labeled(t("cases:labels.facialFeatures"))}
               <select
-                value={corpse.facialFeatures}
+                value={corpse?.facialFeatures ?? ""}
                 onChange={(e) =>
                   patch("facialFeatures", e.target.value as "clear" | "unclear" | "")
                 }
@@ -229,11 +230,11 @@ function CorpseEditableCard({
                 <option value="clear">{t("cases:facialFeaturesOptions.clear")}</option>
                 <option value="unclear">{t("cases:facialFeaturesOptions.unclear")}</option>
               </select>
-              {corpse.facialFeatures === "unclear" && (
+              {corpse?.facialFeatures === "unclear" && (
                 <div className="mt-4">
                   <EditableField
                     label={t("cases:labels.facialFeaturesReason")}
-                    value={corpse.facialFeaturesReason}
+                    value={corpse?.facialFeaturesReason ?? ""}
                     onChange={(v) => patch("facialFeaturesReason", v)}
                   />
                 </div>
@@ -242,7 +243,7 @@ function CorpseEditableCard({
             <div>
               {labeled(t("cases:labels.handFingerprints"))}
               <select
-                value={corpse.handFingerprints}
+                value={corpse?.handFingerprints ?? ""}
                 onChange={(e) =>
                   patch("handFingerprints", e.target.value as "yes" | "no" | "")
                 }
@@ -252,11 +253,11 @@ function CorpseEditableCard({
                 <option value="yes">{t("cases:fingerprintOptions.yes")}</option>
                 <option value="no">{t("cases:fingerprintOptions.no")}</option>
               </select>
-              {corpse.handFingerprints === "no" && (
+              {corpse?.handFingerprints === "no" && (
                 <div className="mt-4">
                   <EditableField
                     label={t("cases:labels.handFingerprintsReason")}
-                    value={corpse.handFingerprintsReason}
+                    value={corpse?.handFingerprintsReason ?? ""}
                     onChange={(v) => patch("handFingerprintsReason", v)}
                   />
                 </div>
@@ -273,7 +274,7 @@ function CorpseEditableCard({
             </div>
             <div className="flex flex-wrap gap-2">
               {(["blood", "tissue", "bones", "none"] as const).map((val) => {
-                const checked = corpse.biologicalSample.includes(val);
+                const checked = safeBiologicalSample.includes(val);
                 const labels: Record<string, string> = {
                   blood: t("cases:biologicalSamples.blood"),
                   tissue: t("cases:biologicalSamples.tissue"),
@@ -293,7 +294,7 @@ function CorpseEditableCard({
                         if (val === "none") {
                           next = checked ? [] : ["none"];
                         } else {
-                          const filtered = corpse.biologicalSample.filter(
+                          const filtered = safeBiologicalSample.filter(
                             (v) => v !== "none"
                           );
                           next = checked
@@ -328,7 +329,7 @@ function CorpseEditableCard({
                   evidenceId: `corpse-${index}`,
                   evidenceType: "",
                   description: "",
-                  images: corpse.images,
+                  images: safeImages,
                 } as EvidenceData
               }
               imageUrls={imageUrls}
@@ -338,7 +339,7 @@ function CorpseEditableCard({
 
           <EditableField
             label={t("cases:labels.notes")}
-            value={corpse.notes}
+            value={corpse?.notes ?? ""}
             onChange={(v) => patch("notes", v)}
             textarea
           />
@@ -357,12 +358,28 @@ export default function CorpsesCaseDetail({
   remoteImages: RemoteImages;
   handlers: CorpsesHandlers;
 }) {
-  const corpsesInfo = data.corpsesCaseInfo;
-  const corpsesList = Array.isArray(data.corpsesSpecifications)
+  const corpsesInfo = data?.corpsesCaseInfo ?? {
+    caseNumber: "",
+    caseYear: "",
+    governorate: "",
+    policeDepartment: "",
+    dateOfDiscovery: "",
+    inspectionDate: "",
+    locationOfBodyPresence: "",
+    findingLocation: "",
+    photographyExpert: "",
+    fingerprintExpert: "",
+    note: "",
+  };
+  const corpsesList = Array.isArray(data?.corpsesSpecifications)
     ? data.corpsesSpecifications
-    : [data.corpsesSpecifications];
+    : (data?.corpsesSpecifications ? [data.corpsesSpecifications] : []);
   const [expanded, setExpanded] = useState<Record<number, boolean>>(() => ({ 0: true }));
   const { t } = useTranslation(["cases", "common"]);
+
+  const safeRemoteImages = Array.isArray(remoteImages?.corpseImages) 
+    ? remoteImages.corpseImages 
+    : [];
 
   return (
     <>
@@ -496,7 +513,7 @@ export default function CorpsesCaseDetail({
                 onPatch={(p) => handlers.patchCorpsesSpecifications(idx, p)}
                 onRemove={() => handlers.removeCorpse(idx)}
                 showRemove={corpsesList.length > 1}
-                imageUrls={remoteImages.corpseImages?.[idx] ?? []}
+                imageUrls={safeRemoteImages[idx] ?? []}
                 onImageAction={(action, payload) =>
                   handlers.handleCorpseImageAction(idx, action, payload)
                 }

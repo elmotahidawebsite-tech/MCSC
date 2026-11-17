@@ -68,7 +68,7 @@ export function Login() {
           {/* Logo */}
           <div className="flex justify-center">
             <img
-              src="../public/MAI.png"
+              src="../MAI.png"
               alt={t("auth:logoAlt")}
               className="w-45 h-50"
             />

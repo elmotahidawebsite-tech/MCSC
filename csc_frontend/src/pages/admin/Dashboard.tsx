@@ -76,7 +76,6 @@ export default function Dashboard() {
         setTotalStations(stationUsers.length);
         setTotalCases(casesCount);
       } catch (e) {
-        console.error(e);
         toast.error(t("common:messages.errorOccurred"));
       } finally {
         if (!cancelled) setLoading(false);

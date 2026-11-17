@@ -27,21 +27,9 @@ import { civilCaseInfoSchema } from "@/schemas/caseSchema";
 import { submitCivilCase } from "@/api/cases";
 import { api } from "@/api/client";
 import { GOVERNORATES_BILINGUAL } from "@/constants/governorates";
-
-type MediaKind = "image" | "video" | "audio" | "document";
-
-function mediaKind(f: File): MediaKind {
-  if (f.type.startsWith("image/")) return "image";
-  if (f.type.startsWith("video/")) return "video";
-  if (f.type.startsWith("audio/")) return "audio";
-  return "document";
-}
-
-function formatSize(bytes: number): string {
-  if (bytes >= 1024 * 1024) return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
-  if (bytes >= 1024) return `${(bytes / 1024).toFixed(0)} KB`;
-  return `${bytes} B`;
-}
+import { mediaKind, formatSize, type MediaKind } from "@/utils/media";
+import { validateCaseFileSize } from "@/utils/caseFileSize";
+import { CaseFileSizeIndicator } from "@/components/common/CaseFileSizeIndicator";
 
 type CivilCaseErrors = ZodFormattedError<CivilCaseInfoType>;
 type CivilCaseKey = keyof CivilCaseInfoType;
@@ -98,21 +86,22 @@ export default function CivilCaseInfo() {
     return () => { for (const u of urls) URL.revokeObjectURL(u); };
   }, [data.caseFiles, data.images]);
 
-  // ✅ بيقبل صور + فيديو + صوت + مستندات
+  // ✅ Global case-level 200 MB limit validation
   function handleCivilImagesChange(e: ChangeEvent<HTMLInputElement>): void {
     const files = e.target.files;
     if (files && files.length > 0) {
-      const arr: File[] = [...data.images];
-      for (let i = 0; i < files.length; i++) {
-        const f = files[i];
-        const kind = mediaKind(f);
-        const limit = kind === "image" ? 25 * 1024 * 1024 : 150 * 1024 * 1024;
-        if (f.size > limit) {
-          toast.error(`"${f.name}" كبير جدًا — الحد الأقصى ${kind === "image" ? 25 : 150}MB.`);
-          continue;
-        }
-        arr.push(f);
+      const newFiles = Array.from(files);
+      
+      // Validate against global case limit (200 MB total)
+      const validation = validateCaseFileSize(caseData, newFiles);
+      
+      if (!validation.isValid) {
+        toast.error(validation.errorMessage || "تجاوز الحد الأقصى للملفات");
+        if (civilImagesFileInputRef.current) civilImagesFileInputRef.current.value = "";
+        return;
       }
+      
+      const arr: File[] = [...data.images, ...newFiles];
       updateCivilCaseInfo({ images: arr });
     }
     if (civilImagesFileInputRef.current) civilImagesFileInputRef.current.value = "";
@@ -160,6 +149,7 @@ export default function CivilCaseInfo() {
     <div className="min-h-full">
       <Toaster position="top-right" />
       <div className="mx-auto w-full max-w-5xl pb-6 px-3 sm:px-4 md:px-6 lg:pb-10">
+        <CaseFileSizeIndicator />
         <div className="mb-5 sm:mb-7 flex items-start justify-between">
           <div>
             <div className="flex items-center gap-2 sm:gap-3">
